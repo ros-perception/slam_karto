@@ -35,9 +35,10 @@
 #include "nav_msgs/MapMetaData.h"
 #include "sensor_msgs/LaserScan.h"
 #include "nav_msgs/GetMap.h"
+#include "nav_msgs/Path.h"
 
 #include "open_karto/Mapper.h"
-
+#include "open_karto/Karto.h"
 #include "spa_solver.h"
 
 #include <boost/thread.hpp>
@@ -69,6 +70,7 @@ class SlamKarto
     void publishTransform();
     void publishLoop(double transform_publish_period);
     void publishGraphVisualization();
+    void publishRoute();
 
     // ROS handles
     ros::NodeHandle node_;
@@ -78,6 +80,7 @@ class SlamKarto
     tf::MessageFilter<sensor_msgs::LaserScan>* scan_filter_;
     ros::Publisher sst_;
     ros::Publisher marker_publisher_;
+    ros::Publisher path_publisher_;
     ros::Publisher sstm_;
     ros::ServiceServer ss_;
 
@@ -88,6 +91,7 @@ class SlamKarto
     std::string odom_frame_;
     std::string map_frame_;
     std::string base_frame_;
+    std::string laser_frame_;
     int throttle_scans_;
     ros::Duration map_update_interval_;
     double resolution_;
@@ -127,6 +131,8 @@ SlamKarto::SlamKarto() :
     base_frame_ = "base_link";
   if(!private_nh_.getParam("throttle_scans", throttle_scans_))
     throttle_scans_ = 1;
+  if(!private_nh_.getParam("laser_frame", laser_frame_))
+    laser_frame_ = "lidar";
   double tmp;
   if(!private_nh_.getParam("map_update_interval", tmp))
     tmp = 5.0;
@@ -150,7 +156,7 @@ SlamKarto::SlamKarto() :
   scan_filter_ = new tf::MessageFilter<sensor_msgs::LaserScan>(*scan_filter_sub_, tf_, odom_frame_, 5);
   scan_filter_->registerCallback(boost::bind(&SlamKarto::laserCallback, this, _1));
   marker_publisher_ = node_.advertise<visualization_msgs::MarkerArray>("visualization_marker_array",1);
-
+  path_publisher_ = node_.advertise<nav_msgs::Path>("trajectory", 1, true);
   // Create a thread to periodically publish the latest map->odom
   // transform; it needs to go out regularly, uninterrupted by potentially
   // long periods of computation in our main loop.
@@ -435,6 +441,77 @@ SlamKarto::getOdomPose(karto::Pose2& karto_pose, const ros::Time& t)
 }
 
 void
+SlamKarto::publishRoute()
+{
+  // Trajectory stuff
+  nav_msgs::Path path;
+  std::vector<float> graph;
+  solver_->getGraph(graph);
+  std::vector<karto::LocalizedRangeScan*> allScans = mapper_->GetAllProcessedScans();
+
+  tf::StampedTransform laser_to_base;
+  try
+  {
+    tf_.lookupTransform(laser_frame_, base_frame_, ros::Time(0), laser_to_base);
+  }
+  catch(tf::TransformException e)
+  {
+    ROS_WARN("Failed to compute laser pose, aborting path update (%s)",
+             e.what());
+    return;
+  }
+
+  for(std::vector<karto::LocalizedRangeScan*>::iterator it = allScans.begin(); it != allScans.end(); ++it) {
+
+    karto::LocalizedRangeScan* lrs = *it;
+
+    karto::Pose2 pose_karto = lrs->GetCorrectedPose();
+
+     tf::Transform transform = tf::Transform(
+        tf::createQuaternionFromRPY(0, 0, pose_karto.GetHeading()),
+        tf::Vector3(pose_karto.GetX(),  pose_karto.GetY(), 0.0)
+      )
+      * laser_to_base;
+
+    geometry_msgs::PoseStamped pose;
+    pose.header.stamp = ros::Time::now(); // ros::Time(stampedPoint->stamp);
+    tf::quaternionTFToMsg(transform.getRotation(), pose.pose.orientation);
+    tf::pointTFToMsg(transform.getOrigin(), pose.pose.position);
+    path.poses.push_back(pose);
+  }
+  /*
+  uint id = 0;
+  for (uint i=0; i<graph.size()/2; i++)
+  {
+      tf::Transform transform = tf::Transform(
+        tf::createQuaternionFromRPY(0, 0, stampedPoint->point.theta),
+        tf::Vector3(graph[2*i], graph[2*i + 1], 0.0)
+      )
+      * laser_to_base;
+
+    geometry_msgs::PoseStamped pose;
+    pose.header.stamp = ros::Time(stampedPoint->stamp);
+    tf::quaternionTFToMsg(transform.getRotation(), pose.pose.orientation);
+    tf::pointTFToMsg(transform.getOrigin(), pose.pose.position);
+    path.poses.push_back(pose);
+
+    m.id = id;
+    m.pose.position.x = graph[2*i];
+    m.pose.position.y = graph[2*i+1];
+    marray.markers.push_back(visualization_msgs::Marker(m));
+    id++;
+  }
+  */
+
+
+  path.header.stamp = ros::Time::now();
+  path.header.frame_id = tf_.resolve( map_frame_ );
+
+  path_publisher_.publish(path);
+
+}
+
+void
 SlamKarto::publishGraphVisualization()
 {
   std::vector<float> graph;
@@ -543,6 +620,7 @@ SlamKarto::laserCallback(const sensor_msgs::LaserScan::ConstPtr& scan)
               odom_pose.GetHeading());
 
     publishGraphVisualization();
+    publishRoute();
 
     if(!got_map_ || 
        (scan->header.stamp - last_map_update) > map_update_interval_)
@@ -716,6 +794,41 @@ SlamKarto::mapCallback(nav_msgs::GetMap::Request  &req,
   else
     return false;
 }
+
+
+/** For later
+
+bool
+SlamKarto::begin_mappingCallback(std_srvs::Empty::Request  &req,
+				    std_srvs::Empty::Response  &res)
+{
+  asked_to_begin_ = true;
+
+  return true;
+}
+
+
+bool
+SlamKarto::stop_mappingCallback(std_srvs::Empty::Request  &req,
+				    std_srvs::Empty::Response  &res)
+{
+  asked_to_begin_ = false;
+  init();
+  return true;
+}
+
+bool
+SlamKarto::get_routeCallback(gmapping::GetRoute::Request  &req,
+				       gmapping::GetRoute::Response  &route)
+{
+  ROS_WARN("GET_ROUTE - service called ...");
+  route.plan.poses = most_recent_trajectory_.poses;
+  route.plan.header.stamp = ros::Time::now();
+  route.plan.header.frame_id = tf_.resolve( map_frame_ );
+
+  ROS_WARN("GET_ROUTE - service returning.");
+  return true;
+}*/
 
 int
 main(int argc, char** argv)
