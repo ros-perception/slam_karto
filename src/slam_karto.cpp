@@ -470,8 +470,8 @@ SlamKarto::publishRoute()
      tf::Transform transform = tf::Transform(
         tf::createQuaternionFromRPY(0, 0, pose_karto.GetHeading()),
         tf::Vector3(pose_karto.GetX(),  pose_karto.GetY(), 0.0)
-      )
-      * laser_to_base;
+      );
+    //  * laser_to_base;
 
     geometry_msgs::PoseStamped pose;
     pose.header.stamp = ros::Time::now(); // ros::Time(stampedPoint->stamp);
