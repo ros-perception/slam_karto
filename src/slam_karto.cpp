@@ -32,8 +32,10 @@
 #include "tf/message_filter.h"
 #include "visualization_msgs/MarkerArray.h"
 
+#include "std_srvs/Empty.h"
 #include "nav_msgs/MapMetaData.h"
 #include "sensor_msgs/LaserScan.h"
+#include "slam_karto/GetRoute.h"
 #include "nav_msgs/GetMap.h"
 #include "nav_msgs/Path.h"
 
@@ -61,8 +63,10 @@ class SlamKarto
                      nav_msgs::GetMap::Response &res);
     bool get_routeCallback(slam_karto::GetRoute::Request  &req,
 				       slam_karto::GetRoute::Response  &route);
-
-    bool SlamKarto::get_routeCallback
+    bool begin_mappingCallback(std_srvs::Empty::Request  &req,
+				    std_srvs::Empty::Response  &res);
+    bool stop_mappingCallback(std_srvs::Empty::Request  &req,
+				    std_srvs::Empty::Response  &res);
 
   private:
     bool getOdomPose(karto::Pose2& karto_pose, const ros::Time& t);
@@ -75,6 +79,7 @@ class SlamKarto
     void publishLoop(double transform_publish_period);
     void publishGraphVisualization();
     void publishRoute();
+    void reinit();
 
     // ROS handles
     ros::NodeHandle node_;
@@ -88,7 +93,7 @@ class SlamKarto
     ros::Publisher sstm_;
     ros::ServiceServer ss_;
     ros::ServiceServer ss_begin_;
-    ros::ServiceServer ss_end_;
+    ros::ServiceServer ss_stop_;
     ros::ServiceServer ss_route_;
 
 
@@ -170,8 +175,6 @@ SlamKarto::SlamKarto() :
   ss_begin_ = node_.advertiseService("begin_mapping", &SlamKarto::begin_mappingCallback, this);
   ss_stop_ = node_.advertiseService("stop_mapping", &SlamKarto::stop_mappingCallback, this);
   ss_route_ = node_.advertiseService("get_route", &SlamKarto::get_routeCallback, this);
-
-  get_routeCallback
 
   scan_filter_sub_ = new message_filters::Subscriber<sensor_msgs::LaserScan>(node_, "scan", 5);
   scan_filter_ = new tf::MessageFilter<sensor_msgs::LaserScan>(*scan_filter_sub_, tf_, odom_frame_, 5);
@@ -864,6 +867,11 @@ void SlamKarto::reinit()
   asked_to_begin_ = false;
   map_to_odom_.setIdentity();
 
+  // Retrieve parameters
+  ros::NodeHandle private_nh_("~");
+
+  double transform_publish_period;
+  private_nh_.param("transform_publish_period", transform_publish_period, 0.05);
   // Create a thread to periodically publish the latest map->odom
   // transform; it needs to go out regularly, uninterrupted by potentially
   // long periods of computation in our main loop.
@@ -872,6 +880,7 @@ void SlamKarto::reinit()
   // Initialize Karto structures
   mapper_ = new karto::Mapper();
   dataset_ = new karto::Dataset();
+
 
   // Setting General Parameters from the Parameter Server
   bool use_scan_matching;
