@@ -93,6 +93,7 @@ class SlamKarto
     double resolution_;
     boost::mutex map_mutex_;
     boost::mutex map_to_odom_mutex_;
+    double max_usable_range_;
 
     // Karto bookkeeping
     karto::Mapper* mapper_;
@@ -161,6 +162,10 @@ SlamKarto::SlamKarto() :
   dataset_ = new karto::Dataset();
 
   // Setting General Parameters from the Parameter Server
+
+  // If set, artificially limits the laser range finder's range (c.f. GMapping)
+  private_nh_.param("max_usable_range", max_usable_range_, 0.0);
+
   bool use_scan_matching;
   if(private_nh_.getParam("use_scan_matching", use_scan_matching))
     mapper_->setParamUseScanMatching(use_scan_matching);
@@ -396,7 +401,8 @@ SlamKarto::getLaser(const sensor_msgs::LaserScan::ConstPtr& scan)
 				      laser_pose.getOrigin().y(),
 				      yaw));
     laser->SetMinimumRange(scan->range_min);
-    laser->SetMaximumRange(scan->range_max);
+    if (max_usable_range_ == 0.0) { laser->SetMaximumRange(scan->range_max); }
+    else { laser->SetMaximumRange(max_usable_range_); }
     laser->SetMinimumAngle(scan->angle_min);
     laser->SetMaximumAngle(scan->angle_max);
     laser->SetAngularResolution(scan->angle_increment);
