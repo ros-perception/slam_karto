@@ -169,6 +169,10 @@ SlamKarto::SlamKarto() :
   if(private_nh_.getParam("use_scan_barycenter", use_scan_barycenter))
     mapper_->setParamUseScanBarycenter(use_scan_barycenter);
 
+  double minimum_time_interval;
+  if(private_nh_.getParam("minimum_time_interval", minimum_time_interval))
+    mapper_->setParamMinimumTimeInterval(minimum_time_interval);
+
   double minimum_travel_distance;
   if(private_nh_.getParam("minimum_travel_distance", minimum_travel_distance))
     mapper_->setParamMinimumTravelDistance(minimum_travel_distance);
