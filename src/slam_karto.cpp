@@ -36,15 +36,18 @@
 #include "sensor_msgs/LaserScan.h"
 #include "nav_msgs/GetMap.h"
 
-#include "open_karto/Mapper.h"
+#include <open_karto/Mapper.h>
 
 #include "spa_solver.h"
+#include "spa_graph_visualizer.h"
 
 #include <boost/thread.hpp>
 
 #include <string>
 #include <map>
 #include <vector>
+
+#include <pluginlib/class_loader.h>
 
 // compute linear index for given map coords
 #define MAP_IDX(sx, i, j) ((sx) * (j) + (i))
@@ -68,6 +71,7 @@ class SlamKarto
     bool updateMap();
     void publishTransform();
     void publishLoop(double transform_publish_period);
+    void visLoop(double vis_publish_period);
     void publishGraphVisualization();
 
     // ROS handles
@@ -93,11 +97,17 @@ class SlamKarto
     double resolution_;
     boost::mutex map_mutex_;
     boost::mutex map_to_odom_mutex_;
+    
+    std::string solver_type_;
+    std::string visualizer_type_;
 
     // Karto bookkeeping
     karto::Mapper* mapper_;
     karto::Dataset* dataset_;
-    SpaSolver* solver_;
+    pluginlib::ClassLoader<karto::ScanSolver> solver_loader_;
+    pluginlib::ClassLoader<karto::GraphVisualizer> visualizer_loader_;
+    boost::shared_ptr<karto::ScanSolver> solver_;
+    boost::shared_ptr<karto::GraphVisualizer> visualizer_;
     std::map<std::string, karto::LaserRangeFinder*> lasers_;
     std::map<std::string, bool> lasers_inverted_;
 
@@ -105,8 +115,8 @@ class SlamKarto
     bool got_map_;
     int laser_count_;
     boost::thread* transform_thread_;
+    boost::thread* vis_thread_;
     tf::Transform map_to_odom_;
-    unsigned marker_count_;
     bool inverted_laser_;
 };
 
@@ -114,7 +124,10 @@ SlamKarto::SlamKarto() :
         got_map_(false),
         laser_count_(0),
         transform_thread_(NULL),
-        marker_count_(0)
+        vis_thread_(NULL),
+        solver_loader_("slam_karto", "karto::ScanSolver"),
+        visualizer_loader_("slam_karto", "karto::GraphVisualizer"),
+        mapper_(NULL)
 {
   map_to_odom_.setIdentity();
   // Retrieve parameters
@@ -140,6 +153,14 @@ SlamKarto::SlamKarto() :
   }
   double transform_publish_period;
   private_nh_.param("transform_publish_period", transform_publish_period, 0.05);
+  double vis_publish_period;
+  private_nh_.param("vis_publish_period", vis_publish_period, 2.0);
+
+  if (!private_nh_.getParam("solver_type", solver_type_))
+    solver_type_ = "SPASolver";
+
+  if (!private_nh_.getParam("visualizer_type", visualizer_type_))
+    visualizer_type_ = "SPAGraphVisualizer";
 
   // Set up advertisements and subscriptions
   tfB_ = new tf::TransformBroadcaster();
@@ -280,8 +301,41 @@ SlamKarto::SlamKarto() :
     mapper_->setParamUseResponseExpansion(use_response_expansion);
 
   // Set solver to be used in loop closure
-  solver_ = new SpaSolver();
-  mapper_->SetScanSolver(solver_);
+  std::stringstream solver_plugin_stream;
+  solver_plugin_stream << "karto_plugins::" << solver_type_;
+  try
+  {
+    solver_ = solver_loader_.createInstance(solver_plugin_stream.str());
+    ROS_INFO_STREAM("Loaded " << solver_plugin_stream.str() << " solver plugin");
+  }
+  catch(pluginlib::PluginlibException& ex)
+  {
+    ROS_ERROR_STREAM(
+        "The solver plugin " << solver_plugin_stream.str() << " failed to load for some reason. Error: " << ex.what()
+            << ". We will load the default solver plugin (SPA).");
+    solver_ = boost::shared_ptr<karto_plugins::SPASolver>(new karto_plugins::SPASolver());
+  }
+  mapper_->SetScanSolver(solver_.get());
+
+  // Set visualizer for the graph
+  std::stringstream visualizer_plugin_stream;
+  visualizer_plugin_stream << "karto_plugins::" << visualizer_type_;
+  try
+  {
+    visualizer_ = visualizer_loader_.createInstance(visualizer_plugin_stream.str());
+    ROS_INFO_STREAM("Loaded " << visualizer_plugin_stream.str() << " visualizer plugin");
+  }
+  catch(pluginlib::PluginlibException& ex)
+  {
+    ROS_ERROR_STREAM(
+        "The visualizer plugin " << visualizer_plugin_stream.str() << " failed to load for some reason. Error: " << ex.what()
+            << ". We will load the default visualizer plugin (SPA).");
+    visualizer_ = boost::shared_ptr<karto_plugins::SPAGraphVisualizer>(new karto_plugins::SPAGraphVisualizer());
+  }
+  visualizer_->initialize(solver_);
+  visualizer_->setFrameId(map_frame_);
+
+  vis_thread_ = new boost::thread(boost::bind(&SlamKarto::visLoop, this, vis_publish_period));
 }
 
 SlamKarto::~SlamKarto()
@@ -291,12 +345,19 @@ SlamKarto::~SlamKarto()
     transform_thread_->join();
     delete transform_thread_;
   }
+  if(vis_thread_)
+  {
+    vis_thread_->join();
+    delete vis_thread_;
+  }
+  if(solver_)
+    delete solver_.get(); // Manually trigger deletion to make sure the shared ptr gets deleted before the class loader instance
+  if(visualizer_)
+    delete visualizer_.get(); // Manually trigger deletion to make sure the shared ptr gets deleted before the class loader instance
   if (scan_filter_)
     delete scan_filter_;
   if (scan_filter_sub_)
     delete scan_filter_sub_;
-  if (solver_)
-    delete solver_;
   if (mapper_)
     delete mapper_;
   if (dataset_)
@@ -437,81 +498,7 @@ SlamKarto::getOdomPose(karto::Pose2& karto_pose, const ros::Time& t)
 void
 SlamKarto::publishGraphVisualization()
 {
-  std::vector<float> graph;
-  solver_->getGraph(graph);
-
-  visualization_msgs::MarkerArray marray;
-
-  visualization_msgs::Marker m;
-  m.header.frame_id = "map";
-  m.header.stamp = ros::Time::now();
-  m.id = 0;
-  m.ns = "karto";
-  m.type = visualization_msgs::Marker::SPHERE;
-  m.pose.position.x = 0.0;
-  m.pose.position.y = 0.0;
-  m.pose.position.z = 0.0;
-  m.scale.x = 0.1;
-  m.scale.y = 0.1;
-  m.scale.z = 0.1;
-  m.color.r = 1.0;
-  m.color.g = 0;
-  m.color.b = 0.0;
-  m.color.a = 1.0;
-  m.lifetime = ros::Duration(0);
-
-  visualization_msgs::Marker edge;
-  edge.header.frame_id = "map";
-  edge.header.stamp = ros::Time::now();
-  edge.action = visualization_msgs::Marker::ADD;
-  edge.ns = "karto";
-  edge.id = 0;
-  edge.type = visualization_msgs::Marker::LINE_STRIP;
-  edge.scale.x = 0.1;
-  edge.scale.y = 0.1;
-  edge.scale.z = 0.1;
-  edge.color.a = 1.0;
-  edge.color.r = 0.0;
-  edge.color.g = 0.0;
-  edge.color.b = 1.0;
-
-  m.action = visualization_msgs::Marker::ADD;
-  uint id = 0;
-  for (uint i=0; i<graph.size()/2; i++) 
-  {
-    m.id = id;
-    m.pose.position.x = graph[2*i];
-    m.pose.position.y = graph[2*i+1];
-    marray.markers.push_back(visualization_msgs::Marker(m));
-    id++;
-
-    if(i>0)
-    {
-      edge.points.clear();
-
-      geometry_msgs::Point p;
-      p.x = graph[2*(i-1)];
-      p.y = graph[2*(i-1)+1];
-      edge.points.push_back(p);
-      p.x = graph[2*i];
-      p.y = graph[2*i+1];
-      edge.points.push_back(p);
-      edge.id = id;
-
-      marray.markers.push_back(visualization_msgs::Marker(edge));
-      id++;
-    }
-  }
-
-  m.action = visualization_msgs::Marker::DELETE;
-  for (; id < marker_count_; id++) 
-  {
-    m.id = id;
-    marray.markers.push_back(visualization_msgs::Marker(m));
-  }
-
-  marker_count_ = marray.markers.size();
-
+  visualization_msgs::MarkerArray marray = visualizer_->createVisualizationMarkers();
   marker_publisher_.publish(marray);
 }
 
@@ -541,8 +528,6 @@ SlamKarto::laserCallback(const sensor_msgs::LaserScan::ConstPtr& scan)
               odom_pose.GetX(),
               odom_pose.GetY(),
               odom_pose.GetHeading());
-
-    publishGraphVisualization();
 
     if(!got_map_ || 
        (scan->header.stamp - last_map_update) > map_update_interval_)
@@ -715,6 +700,19 @@ SlamKarto::mapCallback(nav_msgs::GetMap::Request  &req,
   }
   else
     return false;
+}
+
+void
+SlamKarto::visLoop(double vis_publish_period)
+{
+  if (vis_publish_period == 0)
+    return;
+
+  ros::Rate r(1.0 / vis_publish_period);
+  while (ros::ok()) {
+    publishGraphVisualization();
+    r.sleep();
+  }
 }
 
 int

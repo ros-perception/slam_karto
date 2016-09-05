@@ -1,0 +1,5 @@
+<library path="libkarto_scan_solver_plugins">
+  <class type="karto_plugins::SPASolver" base_class_type="karto::ScanSolver">
+    <description> Solver plugin for slam_karto that uses SPA. </description>
+  </class>
+</library>

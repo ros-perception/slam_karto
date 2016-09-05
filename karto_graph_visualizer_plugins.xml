@@ -1,0 +1,5 @@
+<library path="libkarto_graph_visualizer_plugins">
+  <class type="karto_plugins::SPAGraphVisualizer" base_class_type="karto::GraphVisualizer">
+    <description> Graph visualizer plugin for the SPA solver in slam_karto. </description>
+  </class>
+</library>

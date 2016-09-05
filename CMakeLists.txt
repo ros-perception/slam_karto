@@ -13,17 +13,31 @@ find_package(catkin REQUIRED
     sparse_bundle_adjustment
     tf
     visualization_msgs
+    pluginlib
 )
 find_package(Eigen REQUIRED)
 
 include_directories(${catkin_INCLUDE_DIRS} ${EIGEN_INCLUDE_DIRS})
 add_definitions(${EIGEN_DEFINITIONS})
 
-catkin_package()
+catkin_package(
+  LIBRARIES karto_scan_solver_plugins karto_graph_visualizer_plugins
+  )
 
-add_executable(slam_karto src/slam_karto.cpp src/spa_solver.cpp)
-target_link_libraries(slam_karto ${catkin_LIBRARIES})
+add_library(karto_scan_solver_plugins src/spa_solver.cpp)
+add_library(karto_graph_visualizer_plugins src/spa_graph_visualizer.cpp)
+add_executable(slam_karto src/slam_karto.cpp)
 
-install(TARGETS slam_karto
+target_link_libraries(karto_scan_solver_plugins ${catkin_LIBRARIES})
+target_link_libraries(karto_graph_visualizer_plugins ${catkin_LIBRARIES})
+target_link_libraries(slam_karto ${catkin_LIBRARIES} karto_scan_solver_plugins karto_graph_visualizer_plugins)
+
+install(TARGETS slam_karto karto_scan_solver_plugins karto_graph_visualizer_plugins
+  ARCHIVE DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
+  LIBRARY DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
   RUNTIME DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
+)
+
+install(FILES karto_scan_solver_plugins.xml karto_graph_visualizer_plugins.xml
+  DESTINATION ${CATKIN_PACKAGE_SHARE_DESTINATION}
 )
