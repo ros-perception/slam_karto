@@ -38,8 +38,8 @@
 
 #include <open_karto/Mapper.h>
 
-#include "spa_solver.h"
-#include "spa_graph_visualizer.h"
+#include <slam_karto/spa_solver.h>
+#include <slam_karto/spa_graph_visualizer.h>
 
 #include <boost/thread.hpp>
 
@@ -350,10 +350,6 @@ SlamKarto::~SlamKarto()
     vis_thread_->join();
     delete vis_thread_;
   }
-  if(solver_)
-    delete solver_.get(); // Manually trigger deletion to make sure the shared ptr gets deleted before the class loader instance
-  if(visualizer_)
-    delete visualizer_.get(); // Manually trigger deletion to make sure the shared ptr gets deleted before the class loader instance
   if (scan_filter_)
     delete scan_filter_;
   if (scan_filter_sub_)
@@ -362,6 +358,8 @@ SlamKarto::~SlamKarto()
     delete mapper_;
   if (dataset_)
     delete dataset_;
+  visualizer_.reset();
+  solver_.reset();
   // TODO: delete the pointers in the lasers_ map; not sure whether or not
   // I'm supposed to do that.
 }

@@ -1,8 +1,8 @@
 #ifndef SPA_GRAPH_VISUALIZER_H
 #define SPA_GRAPH_VISUALIZER_H
 
-#include "graph_visualizer.h"
-#include "spa_solver.h"
+#include <slam_karto/graph_visualizer.h>
+#include <slam_karto/spa_solver.h>
 
 namespace karto_plugins {
 

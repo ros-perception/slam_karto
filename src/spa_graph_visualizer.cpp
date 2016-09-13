@@ -1,4 +1,4 @@
-#include "spa_graph_visualizer.h"
+#include <slam_karto/spa_graph_visualizer.h>
 #include "ros/console.h"
 #include <pluginlib/class_list_macros.h>
 

@@ -13,6 +13,7 @@ namespace karto {
 class GraphVisualizer
 {
  public:
+  virtual ~GraphVisualizer(){}
   virtual void initialize(const boost::shared_ptr<karto::ScanSolver>& solver)=0;
   virtual visualization_msgs::MarkerArray createVisualizationMarkers()=0;
   inline void setFrameId(const std::string &frame_id)
