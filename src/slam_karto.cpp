@@ -32,12 +32,15 @@
 #include "tf/message_filter.h"
 #include "visualization_msgs/MarkerArray.h"
 
+#include "std_srvs/Empty.h"
 #include "nav_msgs/MapMetaData.h"
 #include "sensor_msgs/LaserScan.h"
+#include "slam_karto/GetRoute.h"
 #include "nav_msgs/GetMap.h"
+#include "nav_msgs/Path.h"
 
 #include "open_karto/Mapper.h"
-
+#include "open_karto/Karto.h"
 #include "spa_solver.h"
 
 #include <boost/thread.hpp>
@@ -58,6 +61,12 @@ class SlamKarto
     void laserCallback(const sensor_msgs::LaserScan::ConstPtr& scan);
     bool mapCallback(nav_msgs::GetMap::Request  &req,
                      nav_msgs::GetMap::Response &res);
+    bool get_routeCallback(slam_karto::GetRoute::Request  &req,
+				       slam_karto::GetRoute::Response  &route);
+    bool begin_mappingCallback(std_srvs::Empty::Request  &req,
+				    std_srvs::Empty::Response  &res);
+    bool stop_mappingCallback(std_srvs::Empty::Request  &req,
+				    std_srvs::Empty::Response  &res);
 
   private:
     bool getOdomPose(karto::Pose2& karto_pose, const ros::Time& t);
@@ -69,6 +78,8 @@ class SlamKarto
     void publishTransform();
     void publishLoop(double transform_publish_period);
     void publishGraphVisualization();
+    void publishRoute();
+    void reinit();
 
     // ROS handles
     ros::NodeHandle node_;
@@ -78,8 +89,13 @@ class SlamKarto
     tf::MessageFilter<sensor_msgs::LaserScan>* scan_filter_;
     ros::Publisher sst_;
     ros::Publisher marker_publisher_;
+    ros::Publisher path_publisher_;
     ros::Publisher sstm_;
     ros::ServiceServer ss_;
+    ros::ServiceServer ss_begin_;
+    ros::ServiceServer ss_stop_;
+    ros::ServiceServer ss_route_;
+
 
     // The map that will be published / send to service callers
     nav_msgs::GetMap::Response map_;
@@ -88,6 +104,7 @@ class SlamKarto
     std::string odom_frame_;
     std::string map_frame_;
     std::string base_frame_;
+    std::string laser_frame_;
     int throttle_scans_;
     ros::Duration map_update_interval_;
     double resolution_;
@@ -108,6 +125,11 @@ class SlamKarto
     tf::Transform map_to_odom_;
     unsigned marker_count_;
     bool inverted_laser_;
+
+    bool asked_to_begin_;
+    //Keep latest trajectory in case it is requested
+    nav_msgs::Path most_recent_trajectory_;
+
 };
 
 SlamKarto::SlamKarto() :
@@ -116,6 +138,8 @@ SlamKarto::SlamKarto() :
         transform_thread_(NULL),
         marker_count_(0)
 {
+
+  asked_to_begin_ = false;
   map_to_odom_.setIdentity();
   // Retrieve parameters
   ros::NodeHandle private_nh_("~");
@@ -127,6 +151,8 @@ SlamKarto::SlamKarto() :
     base_frame_ = "base_link";
   if(!private_nh_.getParam("throttle_scans", throttle_scans_))
     throttle_scans_ = 1;
+  if(!private_nh_.getParam("laser_frame", laser_frame_))
+    laser_frame_ = "lidar";
   double tmp;
   if(!private_nh_.getParam("map_update_interval", tmp))
     tmp = 5.0;
@@ -146,11 +172,15 @@ SlamKarto::SlamKarto() :
   sst_ = node_.advertise<nav_msgs::OccupancyGrid>("map", 1, true);
   sstm_ = node_.advertise<nav_msgs::MapMetaData>("map_metadata", 1, true);
   ss_ = node_.advertiseService("dynamic_map", &SlamKarto::mapCallback, this);
+  ss_begin_ = node_.advertiseService("begin_mapping", &SlamKarto::begin_mappingCallback, this);
+  ss_stop_ = node_.advertiseService("stop_mapping", &SlamKarto::stop_mappingCallback, this);
+  ss_route_ = node_.advertiseService("get_route", &SlamKarto::get_routeCallback, this);
+
   scan_filter_sub_ = new message_filters::Subscriber<sensor_msgs::LaserScan>(node_, "scan", 5);
   scan_filter_ = new tf::MessageFilter<sensor_msgs::LaserScan>(*scan_filter_sub_, tf_, odom_frame_, 5);
   scan_filter_->registerCallback(boost::bind(&SlamKarto::laserCallback, this, _1));
   marker_publisher_ = node_.advertise<visualization_msgs::MarkerArray>("visualization_marker_array",1);
-
+  path_publisher_ = node_.advertise<nav_msgs::Path>("trajectory", 1, true);
   // Create a thread to periodically publish the latest map->odom
   // transform; it needs to go out regularly, uninterrupted by potentially
   // long periods of computation in our main loop.
@@ -435,6 +465,79 @@ SlamKarto::getOdomPose(karto::Pose2& karto_pose, const ros::Time& t)
 }
 
 void
+SlamKarto::publishRoute()
+{
+  // Trajectory stuff
+  nav_msgs::Path path;
+  std::vector<float> graph;
+  solver_->getGraph(graph);
+  std::vector<karto::LocalizedRangeScan*> allScans = mapper_->GetAllProcessedScans();
+
+  tf::StampedTransform laser_to_base;
+  try
+  {
+    tf_.lookupTransform(laser_frame_, base_frame_, ros::Time(0), laser_to_base);
+  }
+  catch(tf::TransformException e)
+  {
+    ROS_WARN("Failed to compute laser pose, aborting path update (%s)",
+             e.what());
+    return;
+  }
+
+  for(std::vector<karto::LocalizedRangeScan*>::iterator it = allScans.begin(); it != allScans.end(); ++it) {
+
+    karto::LocalizedRangeScan* lrs = *it;
+
+    karto::Pose2 pose_karto = lrs->GetCorrectedPose();
+
+     tf::Transform transform = tf::Transform(
+        tf::createQuaternionFromRPY(0, 0, pose_karto.GetHeading()),
+        tf::Vector3(pose_karto.GetX(),  pose_karto.GetY(), 0.0)
+      );
+    //  * laser_to_base;
+
+    geometry_msgs::PoseStamped pose;
+    pose.header.stamp = ros::Time::now(); // ros::Time(stampedPoint->stamp);
+    tf::quaternionTFToMsg(transform.getRotation(), pose.pose.orientation);
+    tf::pointTFToMsg(transform.getOrigin(), pose.pose.position);
+    path.poses.push_back(pose);
+  }
+  /*
+  uint id = 0;
+  for (uint i=0; i<graph.size()/2; i++)
+  {
+      tf::Transform transform = tf::Transform(
+        tf::createQuaternionFromRPY(0, 0, stampedPoint->point.theta),
+        tf::Vector3(graph[2*i], graph[2*i + 1], 0.0)
+      )
+      * laser_to_base;
+
+    geometry_msgs::PoseStamped pose;
+    pose.header.stamp = ros::Time(stampedPoint->stamp);
+    tf::quaternionTFToMsg(transform.getRotation(), pose.pose.orientation);
+    tf::pointTFToMsg(transform.getOrigin(), pose.pose.position);
+    path.poses.push_back(pose);
+
+    m.id = id;
+    m.pose.position.x = graph[2*i];
+    m.pose.position.y = graph[2*i+1];
+    marray.markers.push_back(visualization_msgs::Marker(m));
+    id++;
+  }
+  */
+
+
+  path.header.stamp = ros::Time::now();
+  path.header.frame_id = tf_.resolve( map_frame_ );
+
+  path_publisher_.publish(path);
+
+  most_recent_trajectory_ = path;
+
+}
+
+void
 SlamKarto::publishGraphVisualization()
 {
   std::vector<float> graph;
@@ -518,6 +621,10 @@ SlamKarto::publishGraphVisualization()
 void
 SlamKarto::laserCallback(const sensor_msgs::LaserScan::ConstPtr& scan)
 {
+
+  if (!asked_to_begin_)
+    return;
+
   laser_count_++;
   if ((laser_count_ % throttle_scans_) != 0)
     return;
@@ -543,6 +650,7 @@ SlamKarto::laserCallback(const sensor_msgs::LaserScan::ConstPtr& scan)
               odom_pose.GetHeading());
 
     publishGraphVisualization();
+    publishRoute();
 
     if(!got_map_ || 
        (scan->header.stamp - last_map_update) > map_update_interval_)
@@ -716,6 +824,189 @@ SlamKarto::mapCallback(nav_msgs::GetMap::Request  &req,
   else
     return false;
 }
+
+bool
+SlamKarto::get_routeCallback(slam_karto::GetRoute::Request  &req,
+				       slam_karto::GetRoute::Response  &route)
+{
+  route.plan.poses = most_recent_trajectory_.poses;
+  route.plan.header.stamp = ros::Time::now();
+  route.plan.header.frame_id = tf_.resolve( map_frame_ );
+
+  ROS_WARN("GET_ROUTE - service returning.");
+  return true;
+}
+
+bool
+SlamKarto::begin_mappingCallback(std_srvs::Empty::Request  &req,
+				    std_srvs::Empty::Response  &res)
+{
+  ROS_WARN("BEGIN MAPPING - service called.");
+  asked_to_begin_ = true;
+  return true;
+}
+
+
+bool
+SlamKarto::stop_mappingCallback(std_srvs::Empty::Request  &req,
+				    std_srvs::Empty::Response  &res)
+{
+  ROS_WARN("STOP MAPPING - service called... resetting mapping data...");
+  asked_to_begin_ = false;
+  reinit();
+  ROS_WARN("STOP MAPPING - service called returning.");
+  return true;
+}
+
+void SlamKarto::reinit()
+{
+  got_map_ = false;
+  laser_count_ = 0;
+  transform_thread_ = NULL;
+  marker_count_ = 0;
+  asked_to_begin_ = false;
+  map_to_odom_.setIdentity();
+
+  // Retrieve parameters
+  ros::NodeHandle private_nh_("~");
+
+  double transform_publish_period;
+  private_nh_.param("transform_publish_period", transform_publish_period, 0.05);
+  // Create a thread to periodically publish the latest map->odom
+  // transform; it needs to go out regularly, uninterrupted by potentially
+  // long periods of computation in our main loop.
+  transform_thread_ = new boost::thread(boost::bind(&SlamKarto::publishLoop, this, transform_publish_period));
+
+  // Initialize Karto structures
+  mapper_ = new karto::Mapper();
+  dataset_ = new karto::Dataset();
+
+
+  // Setting General Parameters from the Parameter Server
+  bool use_scan_matching;
+  if(private_nh_.getParam("use_scan_matching", use_scan_matching))
+    mapper_->setParamUseScanMatching(use_scan_matching);
+
+  bool use_scan_barycenter;
+  if(private_nh_.getParam("use_scan_barycenter", use_scan_barycenter))
+    mapper_->setParamUseScanBarycenter(use_scan_barycenter);
+
+  double minimum_travel_distance;
+  if(private_nh_.getParam("minimum_travel_distance", minimum_travel_distance))
+    mapper_->setParamMinimumTravelDistance(minimum_travel_distance);
+
+  double minimum_travel_heading;
+  if(private_nh_.getParam("minimum_travel_heading", minimum_travel_heading))
+    mapper_->setParamMinimumTravelHeading(minimum_travel_heading);
+
+  int scan_buffer_size;
+  if(private_nh_.getParam("scan_buffer_size", scan_buffer_size))
+    mapper_->setParamScanBufferSize(scan_buffer_size);
+
+  double scan_buffer_maximum_scan_distance;
+  if(private_nh_.getParam("scan_buffer_maximum_scan_distance", scan_buffer_maximum_scan_distance))
+    mapper_->setParamScanBufferMaximumScanDistance(scan_buffer_maximum_scan_distance);
+
+  double link_match_minimum_response_fine;
+  if(private_nh_.getParam("link_match_minimum_response_fine", link_match_minimum_response_fine))
+    mapper_->setParamLinkMatchMinimumResponseFine(link_match_minimum_response_fine);
+
+  double link_scan_maximum_distance;
+  if(private_nh_.getParam("link_scan_maximum_distance", link_scan_maximum_distance))
+    mapper_->setParamLinkScanMaximumDistance(link_scan_maximum_distance);
+
+  double loop_search_maximum_distance;
+  if(private_nh_.getParam("loop_search_maximum_distance", loop_search_maximum_distance))
+    mapper_->setParamLoopSearchMaximumDistance(loop_search_maximum_distance);
+
+  bool do_loop_closing;
+  if(private_nh_.getParam("do_loop_closing", do_loop_closing))
+    mapper_->setParamDoLoopClosing(do_loop_closing);
+
+  int loop_match_minimum_chain_size;
+  if(private_nh_.getParam("loop_match_minimum_chain_size", loop_match_minimum_chain_size))
+    mapper_->setParamLoopMatchMinimumChainSize(loop_match_minimum_chain_size);
+
+  double loop_match_maximum_variance_coarse;
+  if(private_nh_.getParam("loop_match_maximum_variance_coarse", loop_match_maximum_variance_coarse))
+    mapper_->setParamLoopMatchMaximumVarianceCoarse(loop_match_maximum_variance_coarse);
+
+  double loop_match_minimum_response_coarse;
+  if(private_nh_.getParam("loop_match_minimum_response_coarse", loop_match_minimum_response_coarse))
+    mapper_->setParamLoopMatchMinimumResponseCoarse(loop_match_minimum_response_coarse);
+
+  double loop_match_minimum_response_fine;
+  if(private_nh_.getParam("loop_match_minimum_response_fine", loop_match_minimum_response_fine))
+    mapper_->setParamLoopMatchMinimumResponseFine(loop_match_minimum_response_fine);
+
+  // Setting Correlation Parameters from the Parameter Server
+
+  double correlation_search_space_dimension;
+  if(private_nh_.getParam("correlation_search_space_dimension", correlation_search_space_dimension))
+    mapper_->setParamCorrelationSearchSpaceDimension(correlation_search_space_dimension);
+
+  double correlation_search_space_resolution;
+  if(private_nh_.getParam("correlation_search_space_resolution", correlation_search_space_resolution))
+    mapper_->setParamCorrelationSearchSpaceResolution(correlation_search_space_resolution);
+
+  double correlation_search_space_smear_deviation;
+  if(private_nh_.getParam("correlation_search_space_smear_deviation", correlation_search_space_smear_deviation))
+    mapper_->setParamCorrelationSearchSpaceSmearDeviation(correlation_search_space_smear_deviation);
+
+  // Setting Correlation Parameters, Loop Closure Parameters from the Parameter Server
+
+  double loop_search_space_dimension;
+  if(private_nh_.getParam("loop_search_space_dimension", loop_search_space_dimension))
+    mapper_->setParamLoopSearchSpaceDimension(loop_search_space_dimension);
+
+  double loop_search_space_resolution;
+  if(private_nh_.getParam("loop_search_space_resolution", loop_search_space_resolution))
+    mapper_->setParamLoopSearchSpaceResolution(loop_search_space_resolution);
+
+  double loop_search_space_smear_deviation;
+  if(private_nh_.getParam("loop_search_space_smear_deviation", loop_search_space_smear_deviation))
+    mapper_->setParamLoopSearchSpaceSmearDeviation(loop_search_space_smear_deviation);
+
+  // Setting Scan Matcher Parameters from the Parameter Server
+
+  double distance_variance_penalty;
+  if(private_nh_.getParam("distance_variance_penalty", distance_variance_penalty))
+    mapper_->setParamDistanceVariancePenalty(distance_variance_penalty);
+
+  double angle_variance_penalty;
+  if(private_nh_.getParam("angle_variance_penalty", angle_variance_penalty))
+    mapper_->setParamAngleVariancePenalty(angle_variance_penalty);
+
+  double fine_search_angle_offset;
+  if(private_nh_.getParam("fine_search_angle_offset", fine_search_angle_offset))
+    mapper_->setParamFineSearchAngleOffset(fine_search_angle_offset);
+
+  double coarse_search_angle_offset;
+  if(private_nh_.getParam("coarse_search_angle_offset", coarse_search_angle_offset))
+    mapper_->setParamCoarseSearchAngleOffset(coarse_search_angle_offset);
+
+  double coarse_angle_resolution;
+  if(private_nh_.getParam("coarse_angle_resolution", coarse_angle_resolution))
+    mapper_->setParamCoarseAngleResolution(coarse_angle_resolution);
+
+  double minimum_angle_penalty;
+  if(private_nh_.getParam("minimum_angle_penalty", minimum_angle_penalty))
+    mapper_->setParamMinimumAnglePenalty(minimum_angle_penalty);
+
+  double minimum_distance_penalty;
+  if(private_nh_.getParam("minimum_distance_penalty", minimum_distance_penalty))
+    mapper_->setParamMinimumDistancePenalty(minimum_distance_penalty);
+
+  bool use_response_expansion;
+  if(private_nh_.getParam("use_response_expansion", use_response_expansion))
+    mapper_->setParamUseResponseExpansion(use_response_expansion);
+
+  // Set solver to be used in loop closure
+  solver_ = new SpaSolver();
+  mapper_->SetScanSolver(solver_);
+
+}
+
 
 int
 main(int argc, char** argv)
