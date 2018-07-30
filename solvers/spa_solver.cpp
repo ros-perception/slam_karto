@@ -15,10 +15,16 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#include "spa_solver.h"
+#include "spa_solver.hpp"
 #include <open_karto/Karto.h>
 
 #include "ros/console.h"
+#include <pluginlib/class_list_macros.h>
+
+PLUGINLIB_EXPORT_CLASS(solver_plugins::SpaSolver, karto::ScanSolver)
+
+namespace solver_plugins
+{
 
 SpaSolver::SpaSolver()
 {
@@ -46,9 +52,11 @@ void SpaSolver::Compute()
 
   typedef std::vector<sba::Node2d, Eigen::aligned_allocator<sba::Node2d> > NodeVector;
 
-  ROS_INFO("Calling doSPA for loop closure");
-  m_Spa.doSPA(40);
-  ROS_INFO("Finished doSPA for loop closure");
+
+  const ros::Time start_time = ros::Time::now();
+  m_Spa.doSPA(40, 1.0e-4, 1);
+  ROS_INFO("Loop Closure Solve time: %f seconds", (ros::Time::now() - start_time).toSec());
+
   NodeVector nodes = m_Spa.getNodes();
   forEach(NodeVector, &nodes)
   {
@@ -84,3 +92,22 @@ void SpaSolver::AddConstraint(karto::Edge<karto::LocalizedRangeScan>* pEdge)
 
   m_Spa.addConstraint(pSource->GetUniqueId(), pTarget->GetUniqueId(), mean, m);
 }
+
+void SpaSolver::getGraph(std::vector<Eigen::Vector2d> &g)
+{
+  std::vector<float> raw_graph;
+  m_Spa.getGraph(raw_graph);
+
+  g.reserve(raw_graph.size()/4);
+
+  Eigen::Vector2d pose;
+  for (size_t i=0; i!=raw_graph.size()/4; i++)
+  {
+    pose(0) = raw_graph[4*i];
+    pose(1) = raw_graph[4*i+1];
+    g.push_back(pose);
+  }
+}
+
+
+} // end namespace

@@ -1,18 +1,17 @@
 <package>
-  <name>slam_karto</name>
+  <name>slam_toolbox</name>
   <description>
-     This package pulls in the Karto mapping library, and provides a ROS
-     wrapper for using it.
+     This package provides a sped up improved slam karto with updated SDK and visualization and modification toolsets
   </description>
   <version>0.7.3</version>
-  <maintainer email="mferguson@fetchrobotics.com">Michael Ferguson</maintainer>
-  <maintainer email="lbettaieb@fetchrobotics.com">Luc Bettaieb</maintainer>
+  <maintainer email="stevenmacenski@gmail.com">Steve Macenski</maintainer>
   <author>Brian Gerkey</author>
   <license>LGPL</license>
 
   <buildtool_depend>catkin</buildtool_depend>
   
   <build_depend>cmake_modules</build_depend>
+  <build_depend>pluginlib</build_depend>
   <build_depend>eigen</build_depend>
   <build_depend>message_filters</build_depend>
   <build_depend>nav_msgs</build_depend>
@@ -23,8 +22,17 @@
   <build_depend>sensor_msgs</build_depend>
   <build_depend>tf</build_depend>
   <build_depend>visualization_msgs</build_depend>
-
+  <build_depend>message_generation</build_depend>
+  <build_depend>std_srvs</build_depend>
+  <build_depend>interactive_markers</build_depend>
+  <build_depend>std_msgs</build_depend>
+  <build_depend>suitesparse</build_depend>
+  <build_depend>rviz</build_depend>
+  <build_depend>liblapack-dev</build_depend>
+  <build_depend>libceres-dev</build_depend>
+  <build_depend>libg2o</build_depend>
   <run_depend>eigen</run_depend>
+  <run_depend>pluginlib</run_depend>
   <run_depend>message_filters</run_depend>
   <run_depend>nav_msgs</run_depend>
   <run_depend>open_karto</run_depend>
@@ -34,5 +42,19 @@
   <run_depend>sensor_msgs</run_depend>
   <run_depend>tf</run_depend>
   <run_depend>visualization_msgs</run_depend>
+  <run_depend>message_runtime</run_depend>
+  <run_depend>std_srvs</run_depend>
+  <run_depend>interactive_markers</run_depend>
+  <run_depend>std_msgs</run_depend>
+  <run_depend>suitesparse</run_depend>
+  <run_depend>rviz</run_depend>
+  <run_depend>liblapack-dev</run_depend>
+  <run_depend>libceres-dev</run_depend>
+  <run_depend>libg2o</run_depend>
+
+  <export>
+    <slam_toolbox plugin="${prefix}/solver_plugins.xml" />
+    <rviz plugin="${prefix}/rviz_plugin.xml"/>
+  </export>
 
 </package>
