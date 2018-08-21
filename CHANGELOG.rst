@@ -2,8 +2,8 @@
 Changelog for package slam_karto
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-Forthcoming
------------
+0.8.0 (2018-08-21)
+------------------
 * update maintainer email
 * Merge pull request `#19 <https://github.com/ros-perception/slam_karto/issues/19>`_ from ros-perception/maintainer-add
   Adding myself as a maintainer for slam_karto
