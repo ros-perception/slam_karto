@@ -2,6 +2,24 @@
 Changelog for package slam_karto
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
+Forthcoming
+-----------
+* update maintainer email
+* Merge pull request `#19 <https://github.com/ros-perception/slam_karto/issues/19>`_ from ros-perception/maintainer-add
+  Adding myself as a maintainer for slam_karto
+* Adding myself as a maintainer for slam_karto
+* Merge pull request `#15 <https://github.com/ros-perception/slam_karto/issues/15>`_ from jasonimercer/lock-fix
+  Fixed locks so they stay in scope until the end of the method.
+* Fixed locks so they stay in scope until the end of the method.
+* Merge pull request `#14 <https://github.com/ros-perception/slam_karto/issues/14>`_ from xpharry/indigo-devel
+  modify for stage simulation
+* modify for stage simulation
+* Merge pull request `#9 <https://github.com/ros-perception/slam_karto/issues/9>`_ from hvpandya/patch-1
+  Update karto_slam.launch
+* Update karto_slam.launch
+  package name must be slam_karto
+* Contributors: Harsh Pandya, Jason Mercer, Luc Bettaieb, Michael Ferguson, xpharry
+
 0.7.3 (2016-02-04)
 ------------------
 * fixed the upside-down detection
