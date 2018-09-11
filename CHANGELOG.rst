@@ -2,8 +2,8 @@
 Changelog for package slam_karto
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-Forthcoming
------------
+0.8.1 (2018-09-11)
+------------------
 * set C++11 if std not specified
   This is mainly for building on Lunar
 * Contributors: Michael Ferguson

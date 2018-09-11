@@ -4,7 +4,7 @@
      This package pulls in the Karto mapping library, and provides a ROS
      wrapper for using it.
   </description>
-  <version>0.8.0</version>
+  <version>0.8.1</version>
   <maintainer email="mfergs7@gmail.com">Michael Ferguson</maintainer>
   <maintainer email="lbettaieb@fetchrobotics.com">Luc Bettaieb</maintainer>
   <author>Brian Gerkey</author>
