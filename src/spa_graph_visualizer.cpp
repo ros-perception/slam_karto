@@ -1,26 +1,27 @@
-#include <slam_karto/spa_graph_visualizer.h>
-#include "ros/console.h"
+#include <ros/console.h>
 #include <pluginlib/class_list_macros.h>
+#include <slam_karto/spa_graph_visualizer.h>
 
-namespace karto_plugins{
+namespace karto_plugins {
 
-SPAGraphVisualizer::SPAGraphVisualizer():marker_count_(0),visualizer_initialized_(false)
-{
-}
+SPAGraphVisualizer::SPAGraphVisualizer()
+    : marker_count_(0), visualizer_initialized_(false) {}
 
-void SPAGraphVisualizer::initialize(const boost::shared_ptr<karto::ScanSolver>& solver)
-{
-  solver_ = boost::dynamic_pointer_cast < karto_plugins::SPASolver > (solver);
+void SPAGraphVisualizer::initialize(
+    const boost::shared_ptr<karto::ScanSolver> &solver) {
+  solver_ = boost::dynamic_pointer_cast<karto_plugins::SPASolver>(solver);
   if (solver_ == NULL) {
-    ROS_ERROR("Could not initialize SPAGraphVisualizer. Check specified solver, this visualizer is only compatible with the SPA solver.");
+    ROS_ERROR("Could not initialize SPAGraphVisualizer. Check specified "
+              "solver, this visualizer is only compatible with the SPA "
+              "solver.");
     return;
   }
   visualizer_initialized_ = true;
 }
 
-visualization_msgs::MarkerArray SPAGraphVisualizer::createVisualizationMarkers()
-{
-  if(!visualizer_initialized_)
+visualization_msgs::MarkerArray
+SPAGraphVisualizer::createVisualizationMarkers() {
+  if (!visualizer_initialized_)
     return visualization_msgs::MarkerArray();
 
   visualization_msgs::MarkerArray marray;
@@ -61,25 +62,23 @@ visualization_msgs::MarkerArray SPAGraphVisualizer::createVisualizationMarkers()
   edge.color.b = 1.0;
 
   m.action = visualization_msgs::Marker::ADD;
-  uint id = 0;
-  for (uint i=0; i<graph.size()/2; i++)
-  {
+  int id = 0;
+  for (size_t i = 0; i < graph.size() / 2; i++) {
     m.id = id;
-    m.pose.position.x = graph[2*i];
-    m.pose.position.y = graph[2*i+1];
+    m.pose.position.x = graph[2 * i];
+    m.pose.position.y = graph[2 * i + 1];
     marray.markers.push_back(visualization_msgs::Marker(m));
     id++;
 
-    if(i>0)
-    {
+    if (i > 0) {
       edge.points.clear();
 
       geometry_msgs::Point p;
-      p.x = graph[2*(i-1)];
-      p.y = graph[2*(i-1)+1];
+      p.x = graph[2 * (i - 1)];
+      p.y = graph[2 * (i - 1) + 1];
       edge.points.push_back(p);
-      p.x = graph[2*i];
-      p.y = graph[2*i+1];
+      p.x = graph[2 * i];
+      p.y = graph[2 * i + 1];
       edge.points.push_back(p);
       edge.id = id;
 
@@ -89,8 +88,7 @@ visualization_msgs::MarkerArray SPAGraphVisualizer::createVisualizationMarkers()
   }
 
   m.action = visualization_msgs::Marker::DELETE;
-  for (; id < marker_count_; id++)
-  {
+  for (; id < marker_count_; id++) {
     m.id = id;
     marray.markers.push_back(visualization_msgs::Marker(m));
   }
@@ -101,4 +99,6 @@ visualization_msgs::MarkerArray SPAGraphVisualizer::createVisualizationMarkers()
 
 } // namespace karto_plugins
 
-PLUGINLIB_EXPORT_CLASS(karto_plugins::SPAGraphVisualizer, karto::GraphVisualizer)
+PLUGINLIB_EXPORT_CLASS(karto_plugins::SPAGraphVisualizer,
+                       karto::GraphVisualizer)
+

@@ -31,11 +31,9 @@
 
 typedef std::vector<karto::Matrix3> CovarianceVector;
 
-namespace karto_plugins
-{
+namespace karto_plugins {
 
-class SPASolver : public karto::ScanSolver
-{
+class SPASolver : public karto::ScanSolver {
 public:
   SPASolver();
   virtual ~SPASolver();
@@ -43,10 +41,10 @@ public:
 public:
   virtual void Clear();
   virtual void Compute();
-  virtual const karto::ScanSolver::IdPoseVector& GetCorrections() const;
+  virtual const karto::ScanSolver::IdPoseVector &GetCorrections() const;
 
-  virtual void AddNode(karto::Vertex<karto::LocalizedRangeScan>* pVertex);
-  virtual void AddConstraint(karto::Edge<karto::LocalizedRangeScan>* pEdge);
+  virtual void AddNode(karto::Vertex<karto::LocalizedRangeScan> *pVertex);
+  virtual void AddConstraint(karto::Edge<karto::LocalizedRangeScan> *pEdge);
 
   // Get the underlying graph from SBA
   // return the graph of constraints
@@ -62,3 +60,4 @@ private:
 }; // namespace karto_plugins
 
 #endif // KARTO_SPASOLVER_H
+

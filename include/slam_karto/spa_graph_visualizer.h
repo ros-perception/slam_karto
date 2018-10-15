@@ -9,13 +9,13 @@ namespace karto_plugins {
 /*
  * Graph visualizer plugin for the SPA solver
  */
-class SPAGraphVisualizer : public karto::GraphVisualizer
-{
- public:
+class SPAGraphVisualizer : public karto::GraphVisualizer {
+public:
   SPAGraphVisualizer();
-  void initialize(const boost::shared_ptr<karto::ScanSolver>& solver);
+  void initialize(const boost::shared_ptr<karto::ScanSolver> &solver);
   visualization_msgs::MarkerArray createVisualizationMarkers();
- private:
+
+private:
   int marker_count_;
   boost::shared_ptr<karto_plugins::SPASolver> solver_;
   bool visualizer_initialized_;
@@ -24,3 +24,4 @@ class SPAGraphVisualizer : public karto::GraphVisualizer
 }; // namespace karto_plugins
 
 #endif // SPA_GRAPH_VISUALIZER_H
+

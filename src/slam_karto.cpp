@@ -24,27 +24,27 @@
 
 */
 
-#include "ros/ros.h"
-#include "ros/console.h"
-#include "message_filters/subscriber.h"
-#include "tf/transform_broadcaster.h"
-#include "tf/transform_listener.h"
-#include "tf/message_filter.h"
-#include "visualization_msgs/MarkerArray.h"
+#include <message_filters/subscriber.h>
+#include <ros/console.h>
+#include <ros/ros.h>
+#include <tf/message_filter.h>
+#include <tf/transform_broadcaster.h>
+#include <tf/transform_listener.h>
+#include <visualization_msgs/MarkerArray.h>
 
-#include "nav_msgs/MapMetaData.h"
-#include "sensor_msgs/LaserScan.h"
-#include "nav_msgs/GetMap.h"
+#include <nav_msgs/GetMap.h>
+#include <nav_msgs/MapMetaData.h>
+#include <sensor_msgs/LaserScan.h>
 
 #include <open_karto/Mapper.h>
 
-#include <slam_karto/spa_solver.h>
 #include <slam_karto/spa_graph_visualizer.h>
+#include <slam_karto/spa_solver.h>
 
 #include <boost/thread.hpp>
 
-#include <string>
 #include <map>
+#include <string>
 #include <vector>
 
 #include <pluginlib/class_loader.h>
@@ -52,103 +52,98 @@
 // compute linear index for given map coords
 #define MAP_IDX(sx, i, j) ((sx) * (j) + (i))
 
-class SlamKarto
-{
-  public:
-    SlamKarto();
-    ~SlamKarto();
+class SlamKarto {
+public:
+  SlamKarto();
+  ~SlamKarto();
 
-    void laserCallback(const sensor_msgs::LaserScan::ConstPtr& scan);
-    bool mapCallback(nav_msgs::GetMap::Request  &req,
-                     nav_msgs::GetMap::Response &res);
+  void laserCallback(const sensor_msgs::LaserScan::ConstPtr &scan);
+  bool mapCallback(nav_msgs::GetMap::Request &req,
+                   nav_msgs::GetMap::Response &res);
 
-  private:
-    bool getOdomPose(karto::Pose2& karto_pose, const ros::Time& t);
-    karto::LaserRangeFinder* getLaser(const sensor_msgs::LaserScan::ConstPtr& scan);
-    bool addScan(karto::LaserRangeFinder* laser,
-                 const sensor_msgs::LaserScan::ConstPtr& scan,
-                 karto::Pose2& karto_pose);
-    bool updateMap();
-    void publishTransform();
-    void publishLoop(double transform_publish_period);
-    void visLoop(double vis_publish_period);
-    void publishGraphVisualization();
+private:
+  bool getOdomPose(karto::Pose2 &karto_pose, const ros::Time &t);
+  karto::LaserRangeFinder *
+  getLaser(const sensor_msgs::LaserScan::ConstPtr &scan);
+  bool addScan(karto::LaserRangeFinder *laser,
+               const sensor_msgs::LaserScan::ConstPtr &scan,
+               karto::Pose2 &karto_pose);
+  bool updateMap();
+  void publishTransform();
+  void publishLoop(double transform_publish_period);
+  void visLoop(double vis_publish_period);
+  void publishGraphVisualization();
 
-    // ROS handles
-    ros::NodeHandle node_;
-    tf::TransformListener tf_;
-    tf::TransformBroadcaster* tfB_;
-    message_filters::Subscriber<sensor_msgs::LaserScan>* scan_filter_sub_;
-    tf::MessageFilter<sensor_msgs::LaserScan>* scan_filter_;
-    ros::Publisher sst_;
-    ros::Publisher marker_publisher_;
-    ros::Publisher sstm_;
-    ros::ServiceServer ss_;
+  // ROS handles
+  ros::NodeHandle node_;
+  tf::TransformListener tf_;
+  tf::TransformBroadcaster *tfB_;
+  message_filters::Subscriber<sensor_msgs::LaserScan> *scan_filter_sub_;
+  tf::MessageFilter<sensor_msgs::LaserScan> *scan_filter_;
+  ros::Publisher sst_;
+  ros::Publisher marker_publisher_;
+  ros::Publisher sstm_;
+  ros::ServiceServer ss_;
 
-    // The map that will be published / send to service callers
-    nav_msgs::GetMap::Response map_;
+  // The map that will be published / send to service callers
+  nav_msgs::GetMap::Response map_;
 
-    // Storage for ROS parameters
-    std::string odom_frame_;
-    std::string map_frame_;
-    std::string base_frame_;
-    int throttle_scans_;
-    ros::Duration map_update_interval_;
-    double resolution_;
-    boost::mutex map_mutex_;
-    boost::mutex map_to_odom_mutex_;
-    
-    std::string solver_type_;
-    std::string visualizer_type_;
+  // Storage for ROS parameters
+  std::string odom_frame_;
+  std::string map_frame_;
+  std::string base_frame_;
+  int throttle_scans_;
+  ros::Duration map_update_interval_;
+  double resolution_;
+  boost::mutex map_mutex_;
+  boost::mutex map_to_odom_mutex_;
 
-    // Karto bookkeeping
-    karto::Mapper* mapper_;
-    karto::Dataset* dataset_;
-    pluginlib::ClassLoader<karto::ScanSolver> solver_loader_;
-    pluginlib::ClassLoader<karto::GraphVisualizer> visualizer_loader_;
-    boost::shared_ptr<karto::ScanSolver> solver_;
-    boost::shared_ptr<karto::GraphVisualizer> visualizer_;
-    std::map<std::string, karto::LaserRangeFinder*> lasers_;
-    std::map<std::string, bool> lasers_inverted_;
+  std::string solver_type_;
+  std::string visualizer_type_;
 
-    // Internal state
-    bool got_map_;
-    int laser_count_;
-    boost::thread* transform_thread_;
-    boost::thread* vis_thread_;
-    tf::Transform map_to_odom_;
-    bool inverted_laser_;
+  // Karto bookkeeping
+  karto::Mapper *mapper_;
+  karto::Dataset *dataset_;
+  pluginlib::ClassLoader<karto::ScanSolver> solver_loader_;
+  pluginlib::ClassLoader<karto::GraphVisualizer> visualizer_loader_;
+  boost::shared_ptr<karto::ScanSolver> solver_;
+  boost::shared_ptr<karto::GraphVisualizer> visualizer_;
+  std::map<std::string, karto::LaserRangeFinder *> lasers_;
+  std::map<std::string, bool> lasers_inverted_;
+
+  // Internal state
+  bool got_map_;
+  int laser_count_;
+  boost::thread *transform_thread_;
+  boost::thread *vis_thread_;
+  tf::Transform map_to_odom_;
+  bool inverted_laser_;
 };
 
-SlamKarto::SlamKarto() :
-        got_map_(false),
-        laser_count_(0),
-        transform_thread_(NULL),
-        vis_thread_(NULL),
-        solver_loader_("slam_karto", "karto::ScanSolver"),
-        visualizer_loader_("slam_karto", "karto::GraphVisualizer"),
-        mapper_(NULL)
-{
+SlamKarto::SlamKarto()
+    : got_map_(false), laser_count_(0), transform_thread_(NULL),
+      vis_thread_(NULL), solver_loader_("slam_karto", "karto::ScanSolver"),
+      visualizer_loader_("slam_karto", "karto::GraphVisualizer"),
+      mapper_(NULL) {
   map_to_odom_.setIdentity();
   // Retrieve parameters
   ros::NodeHandle private_nh_("~");
-  if(!private_nh_.getParam("odom_frame", odom_frame_))
+  if (!private_nh_.getParam("odom_frame", odom_frame_))
     odom_frame_ = "odom";
-  if(!private_nh_.getParam("map_frame", map_frame_))
+  if (!private_nh_.getParam("map_frame", map_frame_))
     map_frame_ = "map";
-  if(!private_nh_.getParam("base_frame", base_frame_))
+  if (!private_nh_.getParam("base_frame", base_frame_))
     base_frame_ = "base_link";
-  if(!private_nh_.getParam("throttle_scans", throttle_scans_))
+  if (!private_nh_.getParam("throttle_scans", throttle_scans_))
     throttle_scans_ = 1;
   double tmp;
-  if(!private_nh_.getParam("map_update_interval", tmp))
+  if (!private_nh_.getParam("map_update_interval", tmp))
     tmp = 5.0;
   map_update_interval_.fromSec(tmp);
-  if(!private_nh_.getParam("resolution", resolution_))
-  {
+  if (!private_nh_.getParam("resolution", resolution_)) {
     // Compatibility with slam_gmapping, which uses "delta" to mean
     // resolution
-    if(!private_nh_.getParam("delta", resolution_))
+    if (!private_nh_.getParam("delta", resolution_))
       resolution_ = 0.05;
   }
   double transform_publish_period;
@@ -167,15 +162,20 @@ SlamKarto::SlamKarto() :
   sst_ = node_.advertise<nav_msgs::OccupancyGrid>("map", 1, true);
   sstm_ = node_.advertise<nav_msgs::MapMetaData>("map_metadata", 1, true);
   ss_ = node_.advertiseService("dynamic_map", &SlamKarto::mapCallback, this);
-  scan_filter_sub_ = new message_filters::Subscriber<sensor_msgs::LaserScan>(node_, "scan", 5);
-  scan_filter_ = new tf::MessageFilter<sensor_msgs::LaserScan>(*scan_filter_sub_, tf_, odom_frame_, 5);
-  scan_filter_->registerCallback(boost::bind(&SlamKarto::laserCallback, this, _1));
-  marker_publisher_ = node_.advertise<visualization_msgs::MarkerArray>("visualization_marker_array",1);
+  scan_filter_sub_ =
+      new message_filters::Subscriber<sensor_msgs::LaserScan>(node_, "scan", 5);
+  scan_filter_ = new tf::MessageFilter<sensor_msgs::LaserScan>(
+      *scan_filter_sub_, tf_, odom_frame_, 5);
+  scan_filter_->registerCallback(
+      boost::bind(&SlamKarto::laserCallback, this, _1));
+  marker_publisher_ = node_.advertise<visualization_msgs::MarkerArray>(
+      "visualization_marker_array", 1);
 
   // Create a thread to periodically publish the latest map->odom
   // transform; it needs to go out regularly, uninterrupted by potentially
   // long periods of computation in our main loop.
-  transform_thread_ = new boost::thread(boost::bind(&SlamKarto::publishLoop, this, transform_publish_period));
+  transform_thread_ = new boost::thread(
+      boost::bind(&SlamKarto::publishLoop, this, transform_publish_period));
 
   // Initialize Karto structures
   mapper_ = new karto::Mapper();
@@ -183,170 +183,197 @@ SlamKarto::SlamKarto() :
 
   // Setting General Parameters from the Parameter Server
   bool use_scan_matching;
-  if(private_nh_.getParam("use_scan_matching", use_scan_matching))
+  if (private_nh_.getParam("use_scan_matching", use_scan_matching))
     mapper_->setParamUseScanMatching(use_scan_matching);
-  
+
   bool use_scan_barycenter;
-  if(private_nh_.getParam("use_scan_barycenter", use_scan_barycenter))
+  if (private_nh_.getParam("use_scan_barycenter", use_scan_barycenter))
     mapper_->setParamUseScanBarycenter(use_scan_barycenter);
 
   double minimum_travel_distance;
-  if(private_nh_.getParam("minimum_travel_distance", minimum_travel_distance))
+  if (private_nh_.getParam("minimum_travel_distance", minimum_travel_distance))
     mapper_->setParamMinimumTravelDistance(minimum_travel_distance);
 
   double minimum_travel_heading;
-  if(private_nh_.getParam("minimum_travel_heading", minimum_travel_heading))
+  if (private_nh_.getParam("minimum_travel_heading", minimum_travel_heading))
     mapper_->setParamMinimumTravelHeading(minimum_travel_heading);
 
   int scan_buffer_size;
-  if(private_nh_.getParam("scan_buffer_size", scan_buffer_size))
+  if (private_nh_.getParam("scan_buffer_size", scan_buffer_size))
     mapper_->setParamScanBufferSize(scan_buffer_size);
 
   double scan_buffer_maximum_scan_distance;
-  if(private_nh_.getParam("scan_buffer_maximum_scan_distance", scan_buffer_maximum_scan_distance))
-    mapper_->setParamScanBufferMaximumScanDistance(scan_buffer_maximum_scan_distance);
+  if (private_nh_.getParam("scan_buffer_maximum_scan_distance",
+                           scan_buffer_maximum_scan_distance))
+    mapper_->setParamScanBufferMaximumScanDistance(
+        scan_buffer_maximum_scan_distance);
 
   double link_match_minimum_response_fine;
-  if(private_nh_.getParam("link_match_minimum_response_fine", link_match_minimum_response_fine))
-    mapper_->setParamLinkMatchMinimumResponseFine(link_match_minimum_response_fine);
+  if (private_nh_.getParam("link_match_minimum_response_fine",
+                           link_match_minimum_response_fine))
+    mapper_->setParamLinkMatchMinimumResponseFine(
+        link_match_minimum_response_fine);
 
   double link_scan_maximum_distance;
-  if(private_nh_.getParam("link_scan_maximum_distance", link_scan_maximum_distance))
+  if (private_nh_.getParam("link_scan_maximum_distance",
+                           link_scan_maximum_distance))
     mapper_->setParamLinkScanMaximumDistance(link_scan_maximum_distance);
 
   double loop_search_maximum_distance;
-  if(private_nh_.getParam("loop_search_maximum_distance", loop_search_maximum_distance))
+  if (private_nh_.getParam("loop_search_maximum_distance",
+                           loop_search_maximum_distance))
     mapper_->setParamLoopSearchMaximumDistance(loop_search_maximum_distance);
 
   bool do_loop_closing;
-  if(private_nh_.getParam("do_loop_closing", do_loop_closing))
+  if (private_nh_.getParam("do_loop_closing", do_loop_closing))
     mapper_->setParamDoLoopClosing(do_loop_closing);
 
   int loop_match_minimum_chain_size;
-  if(private_nh_.getParam("loop_match_minimum_chain_size", loop_match_minimum_chain_size))
+  if (private_nh_.getParam("loop_match_minimum_chain_size",
+                           loop_match_minimum_chain_size))
     mapper_->setParamLoopMatchMinimumChainSize(loop_match_minimum_chain_size);
 
   double loop_match_maximum_variance_coarse;
-  if(private_nh_.getParam("loop_match_maximum_variance_coarse", loop_match_maximum_variance_coarse))
-    mapper_->setParamLoopMatchMaximumVarianceCoarse(loop_match_maximum_variance_coarse);
+  if (private_nh_.getParam("loop_match_maximum_variance_coarse",
+                           loop_match_maximum_variance_coarse))
+    mapper_->setParamLoopMatchMaximumVarianceCoarse(
+        loop_match_maximum_variance_coarse);
 
   double loop_match_minimum_response_coarse;
-  if(private_nh_.getParam("loop_match_minimum_response_coarse", loop_match_minimum_response_coarse))
-    mapper_->setParamLoopMatchMinimumResponseCoarse(loop_match_minimum_response_coarse);
+  if (private_nh_.getParam("loop_match_minimum_response_coarse",
+                           loop_match_minimum_response_coarse))
+    mapper_->setParamLoopMatchMinimumResponseCoarse(
+        loop_match_minimum_response_coarse);
 
   double loop_match_minimum_response_fine;
-  if(private_nh_.getParam("loop_match_minimum_response_fine", loop_match_minimum_response_fine))
-    mapper_->setParamLoopMatchMinimumResponseFine(loop_match_minimum_response_fine);
+  if (private_nh_.getParam("loop_match_minimum_response_fine",
+                           loop_match_minimum_response_fine))
+    mapper_->setParamLoopMatchMinimumResponseFine(
+        loop_match_minimum_response_fine);
 
   // Setting Correlation Parameters from the Parameter Server
 
   double correlation_search_space_dimension;
-  if(private_nh_.getParam("correlation_search_space_dimension", correlation_search_space_dimension))
-    mapper_->setParamCorrelationSearchSpaceDimension(correlation_search_space_dimension);
+  if (private_nh_.getParam("correlation_search_space_dimension",
+                           correlation_search_space_dimension))
+    mapper_->setParamCorrelationSearchSpaceDimension(
+        correlation_search_space_dimension);
 
   double correlation_search_space_resolution;
-  if(private_nh_.getParam("correlation_search_space_resolution", correlation_search_space_resolution))
-    mapper_->setParamCorrelationSearchSpaceResolution(correlation_search_space_resolution);
+  if (private_nh_.getParam("correlation_search_space_resolution",
+                           correlation_search_space_resolution))
+    mapper_->setParamCorrelationSearchSpaceResolution(
+        correlation_search_space_resolution);
 
   double correlation_search_space_smear_deviation;
-  if(private_nh_.getParam("correlation_search_space_smear_deviation", correlation_search_space_smear_deviation))
-    mapper_->setParamCorrelationSearchSpaceSmearDeviation(correlation_search_space_smear_deviation);
+  if (private_nh_.getParam("correlation_search_space_smear_deviation",
+                           correlation_search_space_smear_deviation))
+    mapper_->setParamCorrelationSearchSpaceSmearDeviation(
+        correlation_search_space_smear_deviation);
 
-  // Setting Correlation Parameters, Loop Closure Parameters from the Parameter Server
+  // Setting Correlation Parameters, Loop Closure Parameters from the Parameter
+  // Server
 
   double loop_search_space_dimension;
-  if(private_nh_.getParam("loop_search_space_dimension", loop_search_space_dimension))
+  if (private_nh_.getParam("loop_search_space_dimension",
+                           loop_search_space_dimension))
     mapper_->setParamLoopSearchSpaceDimension(loop_search_space_dimension);
 
   double loop_search_space_resolution;
-  if(private_nh_.getParam("loop_search_space_resolution", loop_search_space_resolution))
+  if (private_nh_.getParam("loop_search_space_resolution",
+                           loop_search_space_resolution))
     mapper_->setParamLoopSearchSpaceResolution(loop_search_space_resolution);
 
   double loop_search_space_smear_deviation;
-  if(private_nh_.getParam("loop_search_space_smear_deviation", loop_search_space_smear_deviation))
-    mapper_->setParamLoopSearchSpaceSmearDeviation(loop_search_space_smear_deviation);
+  if (private_nh_.getParam("loop_search_space_smear_deviation",
+                           loop_search_space_smear_deviation))
+    mapper_->setParamLoopSearchSpaceSmearDeviation(
+        loop_search_space_smear_deviation);
 
   // Setting Scan Matcher Parameters from the Parameter Server
 
   double distance_variance_penalty;
-  if(private_nh_.getParam("distance_variance_penalty", distance_variance_penalty))
+  if (private_nh_.getParam("distance_variance_penalty",
+                           distance_variance_penalty))
     mapper_->setParamDistanceVariancePenalty(distance_variance_penalty);
 
   double angle_variance_penalty;
-  if(private_nh_.getParam("angle_variance_penalty", angle_variance_penalty))
+  if (private_nh_.getParam("angle_variance_penalty", angle_variance_penalty))
     mapper_->setParamAngleVariancePenalty(angle_variance_penalty);
 
   double fine_search_angle_offset;
-  if(private_nh_.getParam("fine_search_angle_offset", fine_search_angle_offset))
+  if (private_nh_.getParam("fine_search_angle_offset",
+                           fine_search_angle_offset))
     mapper_->setParamFineSearchAngleOffset(fine_search_angle_offset);
 
   double coarse_search_angle_offset;
-  if(private_nh_.getParam("coarse_search_angle_offset", coarse_search_angle_offset))
+  if (private_nh_.getParam("coarse_search_angle_offset",
+                           coarse_search_angle_offset))
     mapper_->setParamCoarseSearchAngleOffset(coarse_search_angle_offset);
 
   double coarse_angle_resolution;
-  if(private_nh_.getParam("coarse_angle_resolution", coarse_angle_resolution))
+  if (private_nh_.getParam("coarse_angle_resolution", coarse_angle_resolution))
     mapper_->setParamCoarseAngleResolution(coarse_angle_resolution);
 
   double minimum_angle_penalty;
-  if(private_nh_.getParam("minimum_angle_penalty", minimum_angle_penalty))
+  if (private_nh_.getParam("minimum_angle_penalty", minimum_angle_penalty))
     mapper_->setParamMinimumAnglePenalty(minimum_angle_penalty);
 
   double minimum_distance_penalty;
-  if(private_nh_.getParam("minimum_distance_penalty", minimum_distance_penalty))
+  if (private_nh_.getParam("minimum_distance_penalty",
+                           minimum_distance_penalty))
     mapper_->setParamMinimumDistancePenalty(minimum_distance_penalty);
 
   bool use_response_expansion;
-  if(private_nh_.getParam("use_response_expansion", use_response_expansion))
+  if (private_nh_.getParam("use_response_expansion", use_response_expansion))
     mapper_->setParamUseResponseExpansion(use_response_expansion);
 
   // Set solver to be used in loop closure
   std::stringstream solver_plugin_stream;
   solver_plugin_stream << "karto_plugins::" << solver_type_;
-  try
-  {
+  try {
     solver_ = solver_loader_.createInstance(solver_plugin_stream.str());
-    ROS_INFO_STREAM("Loaded " << solver_plugin_stream.str() << " solver plugin");
-  }
-  catch(pluginlib::PluginlibException& ex)
-  {
-    ROS_ERROR_STREAM(
-        "The solver plugin " << solver_plugin_stream.str() << " failed to load for some reason. Error: " << ex.what()
-            << ". We will load the default solver plugin (SPA).");
-    solver_ = boost::shared_ptr<karto_plugins::SPASolver>(new karto_plugins::SPASolver());
+    ROS_INFO_STREAM("Loaded " << solver_plugin_stream.str()
+                              << " solver plugin");
+  } catch (pluginlib::PluginlibException &ex) {
+    ROS_ERROR_STREAM("The solver plugin "
+                     << solver_plugin_stream.str()
+                     << " failed to load for some reason. Error: " << ex.what()
+                     << ". We will load the default solver plugin (SPA).");
+    solver_ = boost::shared_ptr<karto_plugins::SPASolver>(
+        new karto_plugins::SPASolver());
   }
   mapper_->SetScanSolver(solver_.get());
 
   // Set visualizer for the graph
   std::stringstream visualizer_plugin_stream;
   visualizer_plugin_stream << "karto_plugins::" << visualizer_type_;
-  try
-  {
-    visualizer_ = visualizer_loader_.createInstance(visualizer_plugin_stream.str());
-    ROS_INFO_STREAM("Loaded " << visualizer_plugin_stream.str() << " visualizer plugin");
-  }
-  catch(pluginlib::PluginlibException& ex)
-  {
-    ROS_ERROR_STREAM(
-        "The visualizer plugin " << visualizer_plugin_stream.str() << " failed to load for some reason. Error: " << ex.what()
-            << ". We will load the default visualizer plugin (SPA).");
-    visualizer_ = boost::shared_ptr<karto_plugins::SPAGraphVisualizer>(new karto_plugins::SPAGraphVisualizer());
+  try {
+    visualizer_ =
+        visualizer_loader_.createInstance(visualizer_plugin_stream.str());
+    ROS_INFO_STREAM("Loaded " << visualizer_plugin_stream.str()
+                              << " visualizer plugin");
+  } catch (pluginlib::PluginlibException &ex) {
+    ROS_ERROR_STREAM("The visualizer plugin "
+                     << visualizer_plugin_stream.str()
+                     << " failed to load for some reason. Error: " << ex.what()
+                     << ". We will load the default visualizer plugin (SPA).");
+    visualizer_ = boost::shared_ptr<karto_plugins::SPAGraphVisualizer>(
+        new karto_plugins::SPAGraphVisualizer());
   }
   visualizer_->initialize(solver_);
   visualizer_->setFrameId(map_frame_);
 
-  vis_thread_ = new boost::thread(boost::bind(&SlamKarto::visLoop, this, vis_publish_period));
+  vis_thread_ = new boost::thread(
+      boost::bind(&SlamKarto::visLoop, this, vis_publish_period));
 }
 
-SlamKarto::~SlamKarto()
-{
-  if(transform_thread_)
-  {
+SlamKarto::~SlamKarto() {
+  if (transform_thread_) {
     transform_thread_->join();
     delete transform_thread_;
   }
-  if(vis_thread_)
-  {
+  if (vis_thread_) {
     vis_thread_->join();
     delete vis_thread_;
   }
@@ -364,15 +391,12 @@ SlamKarto::~SlamKarto()
   // I'm supposed to do that.
 }
 
-void
-SlamKarto::publishLoop(double transform_publish_period)
-{
-  if(transform_publish_period == 0)
+void SlamKarto::publishLoop(double transform_publish_period) {
+  if (transform_publish_period == 0)
     return;
 
   ros::Rate r(1.0 / transform_publish_period);
-  while(ros::ok())
-  {
+  while (ros::ok()) {
     publishTransform();
     r.sleep();
   }
@@ -383,15 +407,14 @@ SlamKarto::publishTransform()
 {
   boost::mutex::scoped_lock(map_to_odom_mutex_);
   ros::Time tf_expiration = ros::Time::now() + ros::Duration(0.05);
-  tfB_->sendTransform(tf::StampedTransform (map_to_odom_, ros::Time::now(), map_frame_, odom_frame_));
+  tfB_->sendTransform(tf::StampedTransform(map_to_odom_, ros::Time::now(),
+                                           map_frame_, odom_frame_));
 }
 
-karto::LaserRangeFinder*
-SlamKarto::getLaser(const sensor_msgs::LaserScan::ConstPtr& scan)
-{
+karto::LaserRangeFinder *
+SlamKarto::getLaser(const sensor_msgs::LaserScan::ConstPtr &scan) {
   // Check whether we know about this laser yet
-  if(lasers_.find(scan->header.frame_id) == lasers_.end())
-  {
+  if (lasers_.find(scan->header.frame_id) == lasers_.end()) {
     // New laser; need to create a Karto device for it.
 
     // Get the laser's pose, relative to base.
@@ -400,39 +423,32 @@ SlamKarto::getLaser(const sensor_msgs::LaserScan::ConstPtr& scan)
     ident.setIdentity();
     ident.frame_id_ = scan->header.frame_id;
     ident.stamp_ = scan->header.stamp;
-    try
-    {
+    try {
       tf_.transformPose(base_frame_, ident, laser_pose);
-    }
-    catch(tf::TransformException e)
-    {
+    } catch (tf::TransformException e) {
       ROS_WARN("Failed to compute laser pose, aborting initialization (%s)",
-	       e.what());
+               e.what());
       return NULL;
     }
 
     double yaw = tf::getYaw(laser_pose.getRotation());
 
     ROS_INFO("laser %s's pose wrt base: %.3f %.3f %.3f",
-	     scan->header.frame_id.c_str(),
-	     laser_pose.getOrigin().x(),
-	     laser_pose.getOrigin().y(),
-	     yaw);
+             scan->header.frame_id.c_str(), laser_pose.getOrigin().x(),
+             laser_pose.getOrigin().y(), yaw);
     // To account for lasers that are mounted upside-down,
-    // we create a point 1m above the laser and transform it into the laser frame
+    // we create a point 1m above the laser and transform it into the laser
+    // frame
     // if the point's z-value is <=0, it is upside-down
 
     tf::Vector3 v;
     v.setValue(0, 0, 1 + laser_pose.getOrigin().z());
     tf::Stamped<tf::Vector3> up(v, scan->header.stamp, base_frame_);
 
-    try
-    {
+    try {
       tf_.transformPoint(scan->header.frame_id, up, up);
       ROS_DEBUG("Z-Axis in sensor frame: %.3f", up.z());
-    }
-    catch (tf::TransformException& e)
-    {
+    } catch (tf::TransformException &e) {
       ROS_WARN("Unable to determine orientation of laser: %s", e.what());
       return NULL;
     }
@@ -441,22 +457,21 @@ SlamKarto::getLaser(const sensor_msgs::LaserScan::ConstPtr& scan)
     if (inverse)
       ROS_INFO("laser is mounted upside-down");
 
-
     // Create a laser range finder device and copy in data from the first
     // scan
     std::string name = scan->header.frame_id;
-    karto::LaserRangeFinder* laser = 
-      karto::LaserRangeFinder::CreateLaserRangeFinder(karto::LaserRangeFinder_Custom, karto::Name(name));
+    karto::LaserRangeFinder *laser =
+        karto::LaserRangeFinder::CreateLaserRangeFinder(
+            karto::LaserRangeFinder_Custom, karto::Name(name));
     laser->SetOffsetPose(karto::Pose2(laser_pose.getOrigin().x(),
-				      laser_pose.getOrigin().y(),
-				      yaw));
+                                      laser_pose.getOrigin().y(), yaw));
     laser->SetMinimumRange(scan->range_min);
     laser->SetMaximumRange(scan->range_max);
     laser->SetMinimumAngle(scan->angle_min);
     laser->SetMaximumAngle(scan->angle_max);
     laser->SetAngularResolution(scan->angle_increment);
     // TODO: expose this, and many other parameters
-    //laser_->SetRangeThreshold(12.0);
+    // laser_->SetRangeThreshold(12.0);
 
     // Store this laser device for later
     lasers_[scan->header.frame_id] = laser;
@@ -468,70 +483,55 @@ SlamKarto::getLaser(const sensor_msgs::LaserScan::ConstPtr& scan)
   return lasers_[scan->header.frame_id];
 }
 
-bool
-SlamKarto::getOdomPose(karto::Pose2& karto_pose, const ros::Time& t)
-{
+bool SlamKarto::getOdomPose(karto::Pose2 &karto_pose, const ros::Time &t) {
   // Get the robot's pose
-  tf::Stamped<tf::Pose> ident (tf::Transform(tf::createQuaternionFromRPY(0,0,0),
-                                           tf::Vector3(0,0,0)), t, base_frame_);
+  tf::Stamped<tf::Pose> ident(
+      tf::Transform(tf::createQuaternionFromRPY(0, 0, 0), tf::Vector3(0, 0, 0)),
+      t, base_frame_);
   tf::Stamped<tf::Transform> odom_pose;
-  try
-  {
+  try {
     tf_.transformPose(odom_frame_, ident, odom_pose);
-  }
-  catch(tf::TransformException e)
-  {
+  } catch (tf::TransformException e) {
     ROS_WARN("Failed to compute odom pose, skipping scan (%s)", e.what());
     return false;
   }
   double yaw = tf::getYaw(odom_pose.getRotation());
 
-  karto_pose = 
-          karto::Pose2(odom_pose.getOrigin().x(),
-                       odom_pose.getOrigin().y(),
-                       yaw);
+  karto_pose =
+      karto::Pose2(odom_pose.getOrigin().x(), odom_pose.getOrigin().y(), yaw);
   return true;
 }
 
-void
-SlamKarto::publishGraphVisualization()
-{
-  visualization_msgs::MarkerArray marray = visualizer_->createVisualizationMarkers();
+void SlamKarto::publishGraphVisualization() {
+  visualization_msgs::MarkerArray marray =
+      visualizer_->createVisualizationMarkers();
   marker_publisher_.publish(marray);
 }
 
-void
-SlamKarto::laserCallback(const sensor_msgs::LaserScan::ConstPtr& scan)
-{
+void SlamKarto::laserCallback(const sensor_msgs::LaserScan::ConstPtr &scan) {
   laser_count_++;
   if ((laser_count_ % throttle_scans_) != 0)
     return;
 
-  static ros::Time last_map_update(0,0);
+  static ros::Time last_map_update(0, 0);
 
   // Check whether we know about this laser yet
-  karto::LaserRangeFinder* laser = getLaser(scan);
+  karto::LaserRangeFinder *laser = getLaser(scan);
 
-  if(!laser)
-  {
+  if (!laser) {
     ROS_WARN("Failed to create laser device for %s; discarding scan",
-	     scan->header.frame_id.c_str());
+             scan->header.frame_id.c_str());
     return;
   }
 
   karto::Pose2 odom_pose;
-  if(addScan(laser, scan, odom_pose))
-  {
-    ROS_DEBUG("added scan at pose: %.3f %.3f %.3f", 
-              odom_pose.GetX(),
-              odom_pose.GetY(),
-              odom_pose.GetHeading());
+  if (addScan(laser, scan, odom_pose)) {
+    ROS_DEBUG("added scan at pose: %.3f %.3f %.3f", odom_pose.GetX(),
+              odom_pose.GetY(), odom_pose.GetHeading());
 
-    if(!got_map_ || 
-       (scan->header.stamp - last_map_update) > map_update_interval_)
-    {
-      if(updateMap())
-      {
+    if (!got_map_ ||
+        (scan->header.stamp - last_map_update) > map_update_interval_) {
+      if (updateMap()) {
         last_map_update = scan->header.stamp;
         got_map_ = true;
         ROS_DEBUG("Updated the map");
@@ -545,13 +545,13 @@ SlamKarto::updateMap()
 {
   boost::mutex::scoped_lock(map_mutex_);
 
-  karto::OccupancyGrid* occ_grid = 
-          karto::OccupancyGrid::CreateFromScans(mapper_->GetAllProcessedScans(), resolution_);
+  karto::OccupancyGrid *occ_grid = karto::OccupancyGrid::CreateFromScans(
+      mapper_->GetAllProcessedScans(), resolution_);
 
-  if(!occ_grid)
+  if (!occ_grid)
     return false;
 
-  if(!got_map_) {
+  if (!got_map_) {
     map_.map.info.resolution = resolution_;
     map_.map.info.origin.position.x = 0.0;
     map_.map.info.origin.position.y = 0.0;
@@ -560,18 +560,18 @@ SlamKarto::updateMap()
     map_.map.info.origin.orientation.y = 0.0;
     map_.map.info.origin.orientation.z = 0.0;
     map_.map.info.origin.orientation.w = 1.0;
-  } 
+  }
 
   // Translate to ROS format
   kt_int32s width = occ_grid->GetWidth();
   kt_int32s height = occ_grid->GetHeight();
-  karto::Vector2<kt_double> offset = occ_grid->GetCoordinateConverter()->GetOffset();
+  karto::Vector2<kt_double> offset =
+      occ_grid->GetCoordinateConverter()->GetOffset();
 
-  if(map_.map.info.width != (unsigned int) width || 
-     map_.map.info.height != (unsigned int) height ||
-     map_.map.info.origin.position.x != offset.GetX() ||
-     map_.map.info.origin.position.y != offset.GetY())
-  {
+  if (map_.map.info.width != (unsigned int)width ||
+      map_.map.info.height != (unsigned int)height ||
+      map_.map.info.origin.position.x != offset.GetX() ||
+      map_.map.info.origin.position.y != offset.GetY()) {
     map_.map.info.origin.position.x = offset.GetX();
     map_.map.info.origin.position.y = offset.GetY();
     map_.map.info.width = width;
@@ -579,31 +579,28 @@ SlamKarto::updateMap()
     map_.map.data.resize(map_.map.info.width * map_.map.info.height);
   }
 
-  for (kt_int32s y=0; y<height; y++)
-  {
-    for (kt_int32s x=0; x<width; x++) 
-    {
+  for (kt_int32s y = 0; y < height; y++) {
+    for (kt_int32s x = 0; x < width; x++) {
       // Getting the value at position x,y
       kt_int8u value = occ_grid->GetValue(karto::Vector2<kt_int32s>(x, y));
 
-      switch (value)
-      {
-        case karto::GridStates_Unknown:
-          map_.map.data[MAP_IDX(map_.map.info.width, x, y)] = -1;
-          break;
-        case karto::GridStates_Occupied:
-          map_.map.data[MAP_IDX(map_.map.info.width, x, y)] = 100;
-          break;
-        case karto::GridStates_Free:
-          map_.map.data[MAP_IDX(map_.map.info.width, x, y)] = 0;
-          break;
-        default:
-          ROS_WARN("Encountered unknown cell value at %d, %d", x, y);
-          break;
+      switch (value) {
+      case karto::GridStates_Unknown:
+        map_.map.data[MAP_IDX(map_.map.info.width, x, y)] = -1;
+        break;
+      case karto::GridStates_Occupied:
+        map_.map.data[MAP_IDX(map_.map.info.width, x, y)] = 100;
+        break;
+      case karto::GridStates_Free:
+        map_.map.data[MAP_IDX(map_.map.info.width, x, y)] = 0;
+        break;
+      default:
+        ROS_WARN("Encountered unknown cell value at %d, %d", x, y);
+        break;
       }
     }
   }
-  
+
   // Set the header information on the map
   map_.map.header.stamp = ros::Time::now();
   map_.map.header.frame_id = map_frame_;
@@ -616,71 +613,68 @@ SlamKarto::updateMap()
   return true;
 }
 
-bool
-SlamKarto::addScan(karto::LaserRangeFinder* laser,
-		   const sensor_msgs::LaserScan::ConstPtr& scan, 
-                   karto::Pose2& karto_pose)
-{
-  if(!getOdomPose(karto_pose, scan->header.stamp))
-     return false;
-  
+bool SlamKarto::addScan(karto::LaserRangeFinder *laser,
+                        const sensor_msgs::LaserScan::ConstPtr &scan,
+                        karto::Pose2 &karto_pose) {
+  if (!getOdomPose(karto_pose, scan->header.stamp))
+    return false;
+
   // Create a vector of doubles for karto
   std::vector<kt_double> readings;
 
   if (lasers_inverted_[scan->header.frame_id]) {
-    for(std::vector<float>::const_reverse_iterator it = scan->ranges.rbegin();
-      it != scan->ranges.rend();
-      ++it)
-    {
+    for (std::vector<float>::const_reverse_iterator it = scan->ranges.rbegin();
+         it != scan->ranges.rend(); ++it) {
       readings.push_back(*it);
     }
   } else {
-    for(std::vector<float>::const_iterator it = scan->ranges.begin();
-      it != scan->ranges.end();
-      ++it)
-    {
+    for (std::vector<float>::const_iterator it = scan->ranges.begin();
+         it != scan->ranges.end(); ++it) {
       readings.push_back(*it);
     }
   }
-  
+
   // create localized range scan
-  karto::LocalizedRangeScan* range_scan = 
-    new karto::LocalizedRangeScan(laser->GetName(), readings);
+  karto::LocalizedRangeScan *range_scan =
+      new karto::LocalizedRangeScan(laser->GetName(), readings);
   range_scan->SetOdometricPose(karto_pose);
   range_scan->SetCorrectedPose(karto_pose);
 
   // Add the localized range scan to the mapper
   bool processed;
-  if((processed = mapper_->Process(range_scan)))
-  {
-    //std::cout << "Pose: " << range_scan->GetOdometricPose() << " Corrected Pose: " << range_scan->GetCorrectedPose() << std::endl;
-    
+  if ((processed = mapper_->Process(range_scan))) {
+    // std::cout << "Pose: " << range_scan->GetOdometricPose() << " Corrected
+    // Pose: " << range_scan->GetCorrectedPose() << std::endl;
+
     karto::Pose2 corrected_pose = range_scan->GetCorrectedPose();
 
     // Compute the map->odom transform
     tf::Stamped<tf::Pose> odom_to_map;
-    try
-    {
-      tf_.transformPose(odom_frame_,tf::Stamped<tf::Pose> (tf::Transform(tf::createQuaternionFromRPY(0, 0, corrected_pose.GetHeading()),
-                                                                    tf::Vector3(corrected_pose.GetX(), corrected_pose.GetY(), 0.0)).inverse(),
-                                                                    scan->header.stamp, base_frame_),odom_to_map);
-    }
-    catch(tf::TransformException e)
-    {
+    try {
+      tf_.transformPose(
+          odom_frame_,
+          tf::Stamped<tf::Pose>(
+              tf::Transform(tf::createQuaternionFromRPY(
+                                0, 0, corrected_pose.GetHeading()),
+                            tf::Vector3(corrected_pose.GetX(),
+                                        corrected_pose.GetY(), 0.0))
+                  .inverse(),
+              scan->header.stamp, base_frame_),
+          odom_to_map);
+    } catch (tf::TransformException e) {
       ROS_ERROR("Transform from base_link to odom failed\n");
       odom_to_map.setIdentity();
     }
 
     map_to_odom_mutex_.lock();
-    map_to_odom_ = tf::Transform(tf::Quaternion( odom_to_map.getRotation() ),
-                                 tf::Point(      odom_to_map.getOrigin() ) ).inverse();
+    map_to_odom_ = tf::Transform(tf::Quaternion(odom_to_map.getRotation()),
+                                 tf::Point(odom_to_map.getOrigin()))
+                       .inverse();
     map_to_odom_mutex_.unlock();
-
 
     // Add the localized range scan to the dataset (for memory management)
     dataset_->Add(range_scan);
-  }
-  else
+  } else
     delete range_scan;
 
   return processed;
@@ -695,15 +689,12 @@ SlamKarto::mapCallback(nav_msgs::GetMap::Request  &req,
   {
     res = map_;
     return true;
-  }
-  else
+  } else
     return false;
 }
 
-void
-SlamKarto::visLoop(double vis_publish_period)
-{
-  if (vis_publish_period == 0)
+void SlamKarto::visLoop(double vis_publish_period) {
+  if (vis_publish_period == 0.0)
     return;
 
   ros::Rate r(1.0 / vis_publish_period);
@@ -713,9 +704,7 @@ SlamKarto::visLoop(double vis_publish_period)
   }
 }
 
-int
-main(int argc, char** argv)
-{
+int main(int argc, char **argv) {
   ros::init(argc, argv, "slam_karto");
 
   SlamKarto kn;
@@ -724,3 +713,4 @@ main(int argc, char** argv)
 
   return 0;
 }
+
