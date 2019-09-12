@@ -70,6 +70,10 @@ class SlamKarto
     void publishLoop(double transform_publish_period);
     void publishGraphVisualization();
 
+    //time for tolerance on the published transform,
+    //basically defines how long a map->odom transform is good for
+    ros::Duration transform_tolerance_;
+
     // ROS handles
     ros::NodeHandle node_;
     tf::TransformListener tf_;
@@ -131,6 +135,11 @@ SlamKarto::SlamKarto() :
   if(!private_nh_.getParam("map_update_interval", tmp))
     tmp = 5.0;
   map_update_interval_.fromSec(tmp);
+ 
+  double tmp_tol;
+  private_nh_.param("transform_tolerance", tmp_tol, 0.05);
+  transform_tolerance_.fromSec(tmp_tol);
+
   if(!private_nh_.getParam("resolution", resolution_))
   {
     // Compatibility with slam_gmapping, which uses "delta" to mean
@@ -323,8 +332,8 @@ void
 SlamKarto::publishTransform()
 {
   boost::mutex::scoped_lock lock(map_to_odom_mutex_);
-  ros::Time tf_expiration = ros::Time::now() + ros::Duration(0.05);
-  tfB_->sendTransform(tf::StampedTransform (map_to_odom_, ros::Time::now(), map_frame_, odom_frame_));
+  ros::Time tf_expiration = ros::Time::now() + transform_tolerance_;
+  tfB_->sendTransform(tf::StampedTransform (map_to_odom_, tf_expiration, map_frame_, odom_frame_));
 }
 
 karto::LaserRangeFinder*
