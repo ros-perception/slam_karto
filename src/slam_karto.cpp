@@ -137,7 +137,7 @@ SlamKarto::SlamKarto() :
   map_update_interval_.fromSec(tmp);
  
   double tmp_tol;
-  private_nh_.param("transform_tolerance", tmp_tol, 0.05);
+  private_nh_.param("transform_tolerance", tmp_tol, 0.0);
   transform_tolerance_.fromSec(tmp_tol);
 
   if(!private_nh_.getParam("resolution", resolution_))
