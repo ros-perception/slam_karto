@@ -7,7 +7,6 @@ endif()
 
 find_package(catkin REQUIRED
   COMPONENTS
-    cmake_modules
     message_filters
     nav_msgs
     open_karto
