@@ -490,7 +490,7 @@ SlamKarto::publishGraphVisualization()
 
   m.action = visualization_msgs::Marker::ADD;
   uint id = 0;
-  for (uint i=0; i<graph.size()/2; i++) 
+  for (uint i=0; i<graph.size()/2; i+=2) 
   {
     m.id = id;
     m.pose.position.x = graph[2*i];
@@ -498,22 +498,24 @@ SlamKarto::publishGraphVisualization()
     marray.markers.push_back(visualization_msgs::Marker(m));
     id++;
 
-    if(i>0)
-    {
-      edge.points.clear();
+    m.pose.position.x = graph[2*(i+1)];
+    m.pose.position.y = graph[2*(i+1)+1];
+    marray.markers.push_back(visualization_msgs::Marker(m));
+    id++;
 
-      geometry_msgs::Point p;
-      p.x = graph[2*(i-1)];
-      p.y = graph[2*(i-1)+1];
-      edge.points.push_back(p);
-      p.x = graph[2*i];
-      p.y = graph[2*i+1];
-      edge.points.push_back(p);
-      edge.id = id;
+    edge.points.clear();
 
-      marray.markers.push_back(visualization_msgs::Marker(edge));
-      id++;
-    }
+    geometry_msgs::Point p;
+    p.x = graph[2*i];
+    p.y = graph[2*i+1];
+    edge.points.push_back(p);
+    p.x = graph[2*(i+1)];
+    p.y = graph[2*(i+1)+1];
+    edge.points.push_back(p);
+    edge.id = id;
+
+    marray.markers.push_back(visualization_msgs::Marker(edge));
+    id++;
   }
 
   m.action = visualization_msgs::Marker::DELETE;
