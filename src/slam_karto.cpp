@@ -489,8 +489,8 @@ SlamKarto::publishGraphVisualization()
   edge.color.b = 1.0;
 
   m.action = visualization_msgs::Marker::ADD;
-  uint id = 0;
-  for (uint i=0; i<graph.size()/2; i+=2) 
+  uint32_t id = 0;
+  for (uint32_t i=0; i<graph.size()/2; i+=2) 
   {
     m.id = id;
     m.pose.position.x = graph[2*i];
